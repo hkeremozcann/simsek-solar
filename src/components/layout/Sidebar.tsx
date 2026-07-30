@@ -13,7 +13,7 @@ const navItems: NavItem[] = [
   { href: '/panel', label: 'Kontrol Paneli', icon: '◈' },
   { href: '/projeler', label: 'Projeler', icon: '◫' },
   { href: '/raporlar', label: 'Raporlar', icon: '≡', roller: ['yonetici', 'satis_sonrasi_sorumlusu'] },
-  { href: '/tanimlar', label: 'Tanımlar', icon: '⚙', roller: ['yonetici'] },
+  { href: '/ayarlar', label: 'Ayarlar', icon: '⚙' },
 ]
 
 export function Sidebar() {

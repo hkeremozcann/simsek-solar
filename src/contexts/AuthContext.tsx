@@ -24,6 +24,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [yukleniyor, setYukleniyor] = useState(true)
 
   async function kullaniciBilgisiGetir(authUser: User) {
+    const adSoyad =
+      authUser.user_metadata?.full_name ||
+      authUser.user_metadata?.ad_soyad ||
+      authUser.email?.split('@')[0] ||
+      'Kullanıcı'
+
+    // Önce DB'den çek
     const { data } = await supabase
       .from('kullanicilar')
       .select('*')
@@ -32,24 +39,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (data) {
       setKullanici(data)
+      return
+    }
+
+    // Kayıt yok — oluşturmayı dene
+    const { data: yeni } = await supabase
+      .from('kullanicilar')
+      .insert({ id: authUser.id, ad_soyad: adSoyad, eposta: authUser.email!, rol: 'satis_temsilcisi', aktif_mi: true })
+      .select()
+      .single()
+
+    if (yeni) {
+      setKullanici(yeni)
     } else {
-      // kullanicilar kaydı yok — otomatik oluştur
-      const adSoyad = authUser.user_metadata?.full_name
-        || authUser.user_metadata?.ad_soyad
-        || authUser.email?.split('@')[0]
-        || 'Kullanıcı'
-      const { data: yeni } = await supabase
-        .from('kullanicilar')
-        .insert({
-          id: authUser.id,
-          ad_soyad: adSoyad,
-          eposta: authUser.email!,
-          rol: 'satis_temsilcisi',
-          aktif_mi: true,
-        })
-        .select()
-        .single()
-      if (yeni) setKullanici(yeni)
+      // DB insert de başarısız olsa bile kullanici null kalmasın
+      setKullanici({
+        id: authUser.id,
+        ad_soyad: adSoyad,
+        eposta: authUser.email!,
+        rol: 'satis_temsilcisi',
+        aktif_mi: true,
+        olusturma_tarihi: new Date().toISOString(),
+      } as Kullanici)
     }
   }
 

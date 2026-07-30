@@ -429,10 +429,9 @@ export default function YeniProje() {
                   onChange={(e) => guncelle('satis_temsilcisi_id', e.target.value)}
                   aria-describedby={describedBy} error={!!hatalar.satis_temsilcisi_id}>
                   <option value="">— Seçin —</option>
-                  {kullanicilar
-                    .filter((k) => ['satis_temsilcisi', 'satis_sonrasi_sorumlusu', 'yonetici'].includes(k.rol))
-                    .map((k) => <option key={k.id} value={k.id}>{k.ad_soyad}</option>)
-                  }
+                  {kullanicilar.map((k) => (
+                    <option key={k.id} value={k.id}>{k.ad_soyad}</option>
+                  ))}
                 </Select>
               )}
             </FormField>
