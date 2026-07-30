@@ -15,9 +15,11 @@ const Raporlar = lazy(() => import('@/pages/Raporlar'))
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 2,
-      retry: 2,
-      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+      staleTime: 1000 * 60 * 3,
+      gcTime: 1000 * 60 * 10,
+      retry: 1,
+      retryDelay: 1000,
+      refetchOnWindowFocus: false,
     },
   },
 })
