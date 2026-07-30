@@ -1,25 +1,32 @@
+/* Fontsource — self-hosted, CDN gerekmez */
+@import "@fontsource/archivo/600.css";
+@import "@fontsource/archivo/700.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
 @import "tailwindcss";
 
 @theme {
   --color-murekkep: #0F1F33;
-  --color-pafta: #1B4B73;
-  --color-bakir: #B4531F;
-  --color-kagit: #F5F7F9;
-  --color-yuzey: #FFFFFF;
-  --color-cizgi: #D6DCE3;
-  --color-soluk: #6B7785;
-  --color-uygun: #1B7A4B;
-  --color-hatali: #B3261E;
-  --color-uyari: #9A6700;
+  --color-pafta:    #1B4B73;
+  --color-bakir:    #B4531F;
+  --color-kagit:    #F5F7F9;
+  --color-yuzey:    #FFFFFF;
+  --color-cizgi:    #D6DCE3;
+  --color-soluk:    #6B7785;
+  --color-uygun:    #1B7A4B;
+  --color-hatali:   #B3261E;
+  --color-uyari:    #9A6700;
+  --color-kritik:   #7A1512;
 
   --font-family-baslik: "Archivo", sans-serif;
-  --font-family-govde: "IBM Plex Sans", sans-serif;
-  --font-family-mono: "IBM Plex Mono", monospace;
+  --font-family-govde:  "IBM Plex Sans", sans-serif;
+  --font-family-mono:   "IBM Plex Mono", monospace;
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
 html {
   font-family: "IBM Plex Sans", sans-serif;
@@ -29,11 +36,7 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  line-height: 1.5;
-}
+body { margin: 0; padding: 0; line-height: 1.5; }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: "Archivo", sans-serif;
@@ -42,15 +45,19 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.25;
 }
 
-#root {
-  min-height: 100vh;
-}
+#root { min-height: 100vh; }
 
+/* Tablolarda rakam hizalaması — istisnasız */
+.tabular { font-family: "IBM Plex Mono", monospace; }
+td.num, th.num { font-family: "IBM Plex Mono", monospace; }
+
+/* Odak halkası — WCAG 2.2 AA */
 :focus-visible {
   outline: 2px solid #B4531F;
   outline-offset: 2px;
 }
 
+/* Hareket azaltma */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -58,20 +65,55 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-.fade-in {
-  animation: fadeIn 150ms ease-in-out;
-}
-
+/* Panel animasyonları */
+.fade-in { animation: fadeIn 150ms ease-out; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.slide-in-right {
-  animation: slideInRight 150ms ease-in-out;
-}
-
+.slide-in-right { animation: slideInRight 150ms ease-out; }
 @keyframes slideInRight {
   from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
+
+/* Skeleton yükleme animasyonu */
+.skeleton {
+  background: linear-gradient(90deg, #D6DCE3 25%, #E8ECF0 50%, #D6DCE3 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* Kaydırılabilir tablo */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Tablo ortak stilleri */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7785;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #D6DCE3;
+  white-space: nowrap;
+  background: #FFFFFF;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.data-table td {
+  padding: 10px 12px;
+  font-size: 14px;
+  border-bottom: 1px solid #D6DCE3;
+  vertical-align: middle;
+}
+.data-table tr:hover td { background: #F5F7F9; }
+.data-table tr:last-child td { border-bottom: none; }

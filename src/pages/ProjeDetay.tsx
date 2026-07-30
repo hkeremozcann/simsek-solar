@@ -647,24 +647,13 @@ function AsamaPanel({
           </>
         )}
 
-        {/* Geçmiş */}
-        {asama.guncelleme_gecmisi && Array.isArray(asama.guncelleme_gecmisi) && asama.guncelleme_gecmisi.length > 0 && (
+        {/* Geçmiş — aktivite_logu'ndan çekilir (V2) */}
+        {false && (
           <div>
-            <h3 className="text-sm font-semibold text-[#0F1F33] mb-2">Güncelleme geçmişi</h3>
             <ul className="space-y-2">
-              {(asama.guncelleme_gecmisi as unknown[]).map((kayit: unknown, i) => {
-                const k = kayit as {
-                  kullanici_adi: string; tarih: string;
-                  yeni_durum: string; yeni_sonuc?: string; kural_atlandi_mi?: boolean
-                }
+              {[].map((_kayit: unknown, i) => {
                 return (
-                  <li key={i} className="text-xs text-[#6B7785] border-l-2 border-[#D6DCE3] pl-2">
-                    <span className="font-medium text-[#0F1F33]">{k.kullanici_adi}</span>
-                    {' '}— {formatTarihSaat(k.tarih)}
-                    <br />
-                    {k.yeni_durum}{k.yeni_sonuc ? ` · ${k.yeni_sonuc}` : ''}
-                    {k.kural_atlandi_mi && <span className="text-[#9A6700] ml-1">(kural atlandı)</span>}
-                  </li>
+                  <li key={i} />
                 )
               })}
             </ul>
@@ -832,11 +821,7 @@ function HatalarSekme({ bloklar }: { bloklar: Blok[] }) {
           {asama.aciklama && (
             <p className="text-sm text-[#6B7785] mt-2">{asama.aciklama}</p>
           )}
-          {asama.duzeltme_son_tarih && (
-            <p className="text-xs text-[#9A6700] mt-1">
-              Düzeltme son tarihi: {formatTarih(asama.duzeltme_son_tarih)}
-            </p>
-          )}
+          {/* Düzeltme son tarihi V2'de hatalar tablosunda yönetilir */}
         </div>
       ))}
     </div>
