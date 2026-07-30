@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  --color-murekkep: #0F1F33;
+  --color-pafta: #1B4B73;
+  --color-bakir: #B4531F;
+  --color-kagit: #F5F7F9;
+  --color-yuzey: #FFFFFF;
+  --color-cizgi: #D6DCE3;
+  --color-soluk: #6B7785;
+  --color-uygun: #1B7A4B;
+  --color-hatali: #B3261E;
+  --color-uyari: #9A6700;
+
+  --font-family-baslik: "Archivo", sans-serif;
+  --font-family-govde: "IBM Plex Sans", sans-serif;
+  --font-family-mono: "IBM Plex Mono", monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 16px;
+  color: #0F1F33;
+  background-color: #F5F7F9;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Archivo", sans-serif;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.25;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+:focus-visible {
+  outline: 2px solid #B4531F;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 150ms ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-in-right {
+  animation: slideInRight 150ms ease-in-out;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
