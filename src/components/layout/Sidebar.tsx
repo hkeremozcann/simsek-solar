@@ -82,14 +82,29 @@ export function Sidebar() {
 
       {/* Kullanıcı */}
       <div className="border-t border-white/10 p-4">
-        <div className="text-xs text-white/50 mb-1">Giriş yapıldı:</div>
-        <div className="text-sm font-medium text-white truncate">{kullanici?.ad_soyad}</div>
-        <div className="text-xs text-white/50 truncate">{kullanici?.eposta}</div>
+        <NavLink
+          to="/profil"
+          className="flex items-center gap-2 group mb-2"
+        >
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+            style={{ backgroundColor: '#1B4B73' }}
+            aria-hidden
+          >
+            {(kullanici?.ad_soyad || '?')[0].toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-white truncate group-hover:text-[#B4531F] transition-colors">
+              {kullanici?.ad_soyad}
+            </div>
+            <div className="text-xs text-white/50 truncate">{kullanici?.eposta}</div>
+          </div>
+        </NavLink>
         <button
           onClick={handleCikis}
-          className="mt-3 text-xs text-white/50 hover:text-white transition-colors flex items-center gap-1 min-h-[36px]"
+          className="text-xs text-white/40 hover:text-white transition-colors flex items-center gap-1 min-h-[36px]"
         >
-          <span aria-hidden>→</span>
+          <span aria-hidden>⇥</span>
           Çıkış yap
         </button>
       </div>

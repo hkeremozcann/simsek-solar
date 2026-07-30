@@ -307,8 +307,90 @@ export function useKullanicilar() {
         .select('*')
         .eq('aktif_mi', true)
         .order('ad_soyad')
+      if (error) {
+        console.warn('kullanicilar yüklenemedi:', error.message)
+        return []
+      }
+      return data ?? []
+    },
+  })
+}
+
+// ─── Proje güncelleme ─────────────────────────────────────────
+export function useUpdateProject() {
+  const queryClient = useQueryClient()
+  const { kullanici } = useAuth()
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string
+      data: Partial<Omit<Proje, 'id' | 'proje_kodu' | 'olusturan_id' | 'olusturma_tarihi'>>
+    }) => {
+      const { error } = await supabase
+        .from('projeler')
+        .update(data)
+        .eq('id', id)
       if (error) throw error
-      return data
+
+      await supabase.from('aktivite_logu').insert({
+        kullanici_id: kullanici?.id,
+        tablo: 'projeler',
+        kayit_id: id,
+        islem: 'guncelleme',
+        yeni_deger: data,
+      })
+      return id
+    },
+    onSuccess: (id) => {
+      queryClient.invalidateQueries({ queryKey: ['proje', id] })
+      queryClient.invalidateQueries({ queryKey: ['projeler'] })
+    },
+  })
+}
+
+// ─── Proje arşivleme ─────────────────────────────────────────
+export function useArchiveProject() {
+  const queryClient = useQueryClient()
+  const { kullanici } = useAuth()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('projeler')
+        .update({ durum: 'İptal', aktif_mi: false })
+        .eq('id', id)
+      if (error) throw error
+
+      await supabase.from('aktivite_logu').insert({
+        kullanici_id: kullanici?.id,
+        tablo: 'projeler',
+        kayit_id: id,
+        islem: 'guncelleme',
+        yeni_deger: { durum: 'İptal' },
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projeler'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    },
+  })
+}
+
+// ─── Aktivite logu ────────────────────────────────────────────
+export function useAktiviteLogu(limit = 20) {
+  return useQuery({
+    queryKey: ['aktivite-logu', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('aktivite_logu')
+        .select('*, kullanici:kullanicilar(id, ad_soyad)')
+        .order('tarih', { ascending: false })
+        .limit(limit)
+      if (error) return []
+      return data ?? []
     },
   })
 }

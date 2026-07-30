@@ -106,6 +106,19 @@ export default function ProjeDetay() {
             <p className="text-sm text-[#6B7785] mt-0.5">{proje.firma?.ad} · {proje.il}</p>
           </div>
 
+          {/* Hızlı aksiyonlar */}
+          {rolKontrol(['yonetici', 'satis_sonrasi_sorumlusu']) && (
+            <div className="flex gap-2 flex-shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/projeler/${proje.id}/duzenle`)}
+              >
+                ✎ Düzenle
+              </Button>
+            </div>
+          )}
+
           {/* İlerleme göstergeleri */}
           <div className="flex gap-6 text-sm flex-shrink-0">
             <div>
