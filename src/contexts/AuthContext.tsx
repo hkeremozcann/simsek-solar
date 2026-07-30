@@ -12,6 +12,7 @@ interface AuthContextValue {
   cikisYap: () => Promise<void>
   sifreSifirla: (eposta: string) => Promise<{ hata?: string }>
   rolKontrol: (izinliRoller: KullaniciRolu[]) => boolean
+  kullaniciyiYenile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -22,33 +23,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [yukleniyor, setYukleniyor] = useState(true)
 
-  async function kullaniciBilgisiGetir(userId: string) {
+  async function kullaniciBilgisiGetir(authUser: User) {
     const { data } = await supabase
       .from('kullanicilar')
       .select('*')
-      .eq('id', userId)
+      .eq('id', authUser.id)
       .single()
-    if (data) setKullanici(data)
+
+    if (data) {
+      setKullanici(data)
+    } else {
+      // kullanicilar kaydı yok — otomatik oluştur
+      const adSoyad = authUser.user_metadata?.full_name
+        || authUser.user_metadata?.ad_soyad
+        || authUser.email?.split('@')[0]
+        || 'Kullanıcı'
+      const { data: yeni } = await supabase
+        .from('kullanicilar')
+        .insert({
+          id: authUser.id,
+          ad_soyad: adSoyad,
+          eposta: authUser.email!,
+          rol: 'satis_temsilcisi',
+          aktif_mi: true,
+        })
+        .select()
+        .single()
+      if (yeni) setKullanici(yeni)
+    }
+  }
+
+  async function kullaniciyiYenile() {
+    if (user) {
+      const { data } = await supabase
+        .from('kullanicilar')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+      if (data) setKullanici(data)
+    }
   }
 
   useEffect(() => {
-    // Mevcut oturumu yükle
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        kullaniciBilgisiGetir(session.user.id).finally(() => setYukleniyor(false))
+        kullaniciBilgisiGetir(session.user).finally(() => setYukleniyor(false))
       } else {
         setYukleniyor(false)
       }
     })
 
-    // Auth değişikliklerini dinle
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        kullaniciBilgisiGetir(session.user.id)
+        kullaniciBilgisiGetir(session.user)
       } else {
         setKullanici(null)
       }
@@ -59,9 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function girisYap(eposta: string, sifre: string) {
     const { error } = await supabase.auth.signInWithPassword({ email: eposta, password: sifre })
-    if (error) {
-      return { hata: hataMetniCevir(error.message) }
-    }
+    if (error) return { hata: hataMetniCevir(error.message) }
     return {}
   }
 
@@ -72,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function sifreSifirla(eposta: string) {
     const { error } = await supabase.auth.resetPasswordForEmail(eposta, {
-      redirectTo: `${window.location.origin}/sifre-yenile`,
+      redirectTo: `${window.location.origin}/giris`,
     })
     if (error) return { hata: hataMetniCevir(error.message) }
     return {}
@@ -86,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, kullanici, session, yukleniyor,
-      girisYap, cikisYap, sifreSifirla, rolKontrol,
+      girisYap, cikisYap, sifreSifirla, rolKontrol, kullaniciyiYenile,
     }}>
       {children}
     </AuthContext.Provider>

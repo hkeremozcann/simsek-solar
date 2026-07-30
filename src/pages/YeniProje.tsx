@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { FormField, Input, Select, Textarea, CheckboxGroup } from '@/components/ui/FormField'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useFirmalar, useKullanicilar, useBayiler, useCreateProject } from '@/hooks/useProjects'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   KURUM_TIPLERI, SISTEM_TIPLERI, MONTAJ_KAPSAMI_SECENEKLERI,
   TURKIYE_ILLERI, type ProjeKapsami, type KurumTipi, type SistemTipi
@@ -75,6 +76,7 @@ const ADIMLAR = ['Firma & Sözleşme', 'Saha & Teknik', 'Kişiler', 'Kapsam & Ö
 
 export default function YeniProje() {
   const navigate = useNavigate()
+  const { kullanici } = useAuth()
   const [adim, setAdim] = useState(1)
   const [form, setForm] = useState<FormData>(BOSH_FORM)
   const [hatalar, setHatalar] = useState<Record<string, string>>({})
@@ -83,6 +85,17 @@ export default function YeniProje() {
   const { data: kullanicilar = [] } = useKullanicilar()
   const { data: bayiler = [] } = useBayiler()
   const createProject = useCreateProject()
+
+  // Mevcut kullanıcıyı otomatik satış temsilcisi olarak seç
+  useEffect(() => {
+    if (
+      kullanici &&
+      !form.satis_temsilcisi_id &&
+      ['yonetici', 'satis_sonrasi_sorumlusu', 'satis_temsilcisi'].includes(kullanici.rol)
+    ) {
+      guncelle('satis_temsilcisi_id', kullanici.id)
+    }
+  }, [kullanici])
 
   function guncelle<K extends keyof FormData>(alan: K, deger: FormData[K]) {
     setForm((prev) => ({ ...prev, [alan]: deger }))
