@@ -44,7 +44,7 @@ export function BlokMatrisi({ bloklar, projeId, yazabilir, yonetici }: BlokMatri
   const [topluAsama, setTopluAsama] = useState<AsamaTipi | null>(null)
   const [topluModal, setTopluModal] = useState(false)
   // Klavye gezinme için aktif hücre [blokIndex, asamaIndex]
-  const [aktifHucre, setAktifHucre] = useState<[number, number]>([0, 0])
+  const [aktifHucre, setAktifHucre] = useState<[number, number]>([-1, -1])
   const tabloRef = useRef<HTMLTableElement>(null)
 
   // Sütun sayaçları

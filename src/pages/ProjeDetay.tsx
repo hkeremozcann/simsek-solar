@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Check, X, Pencil } from 'lucide-react'
-import { useProject, useUpdateProject } from '@/hooks/useProjects'
+import { useProject, useUpdateProject, useHatalar } from '@/hooks/useProjects'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { BlokMatrisi as BlokMatrisiBileseni } from './BlokMatrisi'
@@ -250,7 +250,7 @@ export default function ProjeDetay() {
 
         {/* ─── HATALAR ─── */}
         {aktifSekme === 'hatalar' && (
-          <HatalarSekme bloklar={bloklar} />
+          <HatalarSekme projeId={proje.id} yazabilir={yazabilir} />
         )}
 
         {/* ─── ZAMAN ÇİZELGESİ ─── */}
@@ -975,41 +975,99 @@ function SahaRaporlariSekme({ raporlar, projeId, yazabilir }: {
 }
 
 // ─── Hatalar Sekmesi ──────────────────────────────────────────
-function HatalarSekme({ bloklar }: { bloklar: Blok[] }) {
-  const hataliAsamalar = bloklar.flatMap((blok) =>
-    (blok.asamalar || [])
-      .filter((a) => a.sonuc === 'Hatalı')
-      .map((a) => ({ ...a, blokAdi: blok.blok_adi }))
-  )
+function HatalarSekme({ projeId, yazabilir }: { projeId: string; yazabilir: boolean }) {
+  const { data: hatalar = [], isLoading } = useHatalar(projeId)
+  const queryClient = useQueryClient()
+  const [kapaniyor, setKapaniyor] = useState<string | null>(null)
 
-  if (hataliAsamalar.length === 0) {
-    return <EmptyState baslik="Açık hata yok" aciklama="Tüm aşamalarda hata bulunmuyor." />
+  async function kapat(hataId: string) {
+    setKapaniyor(hataId)
+    await supabase.from('hatalar').update({
+      durum: 'Kapandı',
+      kapanma_tarihi: new Date().toISOString(),
+    }).eq('id', hataId)
+    queryClient.invalidateQueries({ queryKey: ['hatalar', projeId] })
+    queryClient.invalidateQueries({ queryKey: ['mv-proje-ozet'] })
+    setKapaniyor(null)
+  }
+
+  if (isLoading) return <div className="py-8 text-center text-sm text-[#6B7785]">Yükleniyor…</div>
+
+  const aciklar = hatalar.filter((h: { durum: string }) => h.durum !== 'Kapandı' && h.durum !== 'Kabul Edildi')
+  const kapalilar = hatalar.filter((h: { durum: string }) => h.durum === 'Kapandı' || h.durum === 'Kabul Edildi')
+
+  if (hatalar.length === 0) {
+    return <EmptyState baslik="Açık hata yok" aciklama="Bu projede kayıtlı hata bulunmuyor." />
   }
 
   return (
-    <div className="space-y-3">
-      {hataliAsamalar.map((asama) => (
-        <div
-          key={asama.id}
-          className="bg-white border border-[#B3261E]/30 border-l-4 border-l-[#B3261E] rounded p-4"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-sm font-semibold text-[#0F1F33]">
-                {(asama as unknown as { blokAdi: string }).blokAdi} — {asama.asama_tipi}
-              </span>
-              <Badge variant="error" className="ml-2">✕ Hatalı</Badge>
-            </div>
-            {asama.kontrol_tarihi && (
-              <span className="text-xs text-[#6B7785] font-mono">{formatTarih(asama.kontrol_tarihi)}</span>
-            )}
+    <div className="space-y-4">
+      {aciklar.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-[#6B7785] uppercase tracking-wide mb-2">
+            Açık hatalar ({aciklar.length})
+          </p>
+          <div className="space-y-2">
+            {aciklar.map((h: {
+              id: string; hata_kodu: string; kategori: string; siddet: string
+              aciklama: string; durum: string; tespit_tarihi: string; son_tarih?: string
+            }) => (
+              <div key={h.id}
+                className="bg-white border border-[#B3261E]/30 border-l-4 border-l-[#B3261E] rounded p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono text-[#B3261E] font-semibold"
+                        style={{ fontFamily: 'IBM Plex Mono' }}>{h.hata_kodu}</span>
+                      <Badge variant="error">{h.siddet}</Badge>
+                      <Badge variant="neutral">{h.durum}</Badge>
+                    </div>
+                    <p className="text-sm font-medium text-[#0F1F33] mt-1">{h.kategori}</p>
+                    <p className="text-sm text-[#6B7785] mt-0.5">{h.aciklama}</p>
+                    <p className="text-xs text-[#6B7785] mt-1 font-mono"
+                      style={{ fontFamily: 'IBM Plex Mono' }}>
+                      Tespit: {formatTarih(h.tespit_tarihi)}
+                      {h.son_tarih && ` · Son tarih: ${formatTarih(h.son_tarih)}`}
+                    </p>
+                  </div>
+                  {yazabilir && (
+                    <Button variant="outline" size="sm"
+                      loading={kapaniyor === h.id}
+                      onClick={() => kapat(h.id)}>
+                      Kapat
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-          {asama.aciklama && (
-            <p className="text-sm text-[#6B7785] mt-2">{asama.aciklama}</p>
-          )}
-          {/* Düzeltme son tarihi V2'de hatalar tablosunda yönetilir */}
         </div>
-      ))}
+      )}
+
+      {kapalilar.length > 0 && (
+        <details className="group">
+          <summary className="text-xs font-semibold text-[#6B7785] uppercase tracking-wide cursor-pointer hover:text-[#0F1F33] list-none flex items-center gap-2">
+            <span className="group-open:rotate-90 transition-transform">›</span>
+            Kapalı hatalar ({kapalilar.length})
+          </summary>
+          <div className="space-y-2 mt-2">
+            {kapalilar.map((h: {
+              id: string; hata_kodu: string; kategori: string; siddet: string
+              aciklama: string; durum: string; tespit_tarihi: string
+            }) => (
+              <div key={h.id}
+                className="bg-[#F5F7F9] border border-[#D6DCE3] rounded p-3 opacity-70">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-[#6B7785]"
+                    style={{ fontFamily: 'IBM Plex Mono' }}>{h.hata_kodu}</span>
+                  <Badge variant="success">Kapalı</Badge>
+                  <span className="text-xs text-[#6B7785]">{h.kategori} · {h.aciklama.slice(0, 60)}{h.aciklama.length > 60 ? '…' : ''}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   )
 }
