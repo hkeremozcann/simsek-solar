@@ -341,8 +341,9 @@ export function useDeleteProject() {
         throw new Error('Proje kodu hatalı. Silme işlemi iptal edildi.')
       }
 
-      // manuel_durum='İptal' → proje hiçbir listede görünmez
+      // durum ve manuel_durum birlikte İptal yap → filtreden düşer
       const { error } = await supabase.from('projeler').update({
+        durum: 'İptal',
         manuel_durum: 'İptal',
         aktif_mi: false,
       }).eq('id', id)
@@ -527,7 +528,9 @@ export function useMvProjeOzet(filters?: {
   return useQuery({
     queryKey: ['mv-proje-ozet', filters],
     queryFn: async () => {
-      let q = supabase.from('mv_proje_ozet').select('*').order('son_hareket_tarihi', { ascending: false })
+      let q = supabase.from('mv_proje_ozet').select('*')
+        .neq('durum', 'İptal')  // Silinen/arşivlenen projeler varsayılan görünmez
+        .order('son_hareket_tarihi', { ascending: false })
       if (filters?.durum) q = q.eq('durum', filters.durum)
       if (filters?.il) q = q.eq('il', filters.il)
       if (filters?.satis_temsilcisi_id) q = q.eq('satis_temsilcisi_id', filters.satis_temsilcisi_id)
