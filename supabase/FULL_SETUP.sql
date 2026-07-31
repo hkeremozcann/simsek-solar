@@ -6,19 +6,13 @@
 
 -- ────────────────────────────────────────────────────────────
 -- BÖLÜM 1: TEMİZLEME
+-- Trigger'lar tablolarla birlikte CASCADE ile otomatik silinir.
 -- ────────────────────────────────────────────────────────────
 
--- Trigger'ları kaldır
-drop trigger if exists tr_blok_asamasi_guncelleme_proje on blok_asamalari;
-drop trigger if exists tr_blok_asamalari_guncelleme on blok_asamalari;
-drop trigger if exists tr_proje_dokumanlari_guncelleme on proje_dokumanlari;
-drop trigger if exists tr_projeler_guncelleme on projeler;
-drop trigger if exists tr_firmalar_guncelleme on firmalar;
+-- auth.users trigger'ı (tabloya bağlı değil, ayrıca silinmeli)
 drop trigger if exists on_auth_user_created on auth.users;
-drop trigger if exists tr_montaj_ekipleri_guncelleme on montaj_ekipleri;
-drop trigger if exists tr_sevkiyat_sonrasi_guncelle on sevkiyatlar;
 
--- Fonksiyonları kaldır (CASCADE: bağımlı policy'leri de siler)
+-- Fonksiyonları CASCADE ile kaldır (bağımlı policy'ler de silinir)
 drop function if exists tr_blok_asamasi_degisince() cascade;
 drop function if exists hesapla_proje_durumu(uuid) cascade;
 drop function if exists set_guncelleme_tarihi() cascade;
@@ -29,7 +23,6 @@ drop function if exists handle_new_auth_user() cascade;
 drop function if exists handle_new_user() cascade;
 drop function if exists yenile_proje_ozet() cascade;
 drop function if exists guncelle_sevk_edilen_adet() cascade;
-drop function if exists hesapla_proje_durumu(uuid) cascade;
 drop function if exists tr_asama_sonrasi_durum() cascade;
 drop function if exists tr_hatali_asama_hata_ac() cascade;
 drop function if exists soft_delete() cascade;
