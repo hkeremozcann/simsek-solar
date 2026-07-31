@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { FormField, Input, Select, Textarea, CheckboxGroup } from '@/components/ui/FormField'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useFirmalar, useKullanicilar, useBayiler, useCreateProject } from '@/hooks/useProjects'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   KURUM_TIPLERI, SISTEM_TIPLERI, MONTAJ_KAPSAMI_SECENEKLERI,
@@ -145,9 +146,24 @@ export default function YeniProje() {
     if (!adimDogrula()) return
 
     try {
+      // "yeni" seçilmişse önce firmayı oluştur
+      let firmaId = form.firma_id
+      if (form.firma_id === 'yeni') {
+        if (!form.yeni_firma_adi.trim()) {
+          setHatalar({ firma: 'Yeni firma adı zorunludur.' })
+          return
+        }
+        const { data: yeniFirma, error: firmaErr } = await supabase
+          .from('firmalar')
+          .insert({ ad: form.yeni_firma_adi, kurum_tipi: form.yeni_firma_kurum_tipi, aktif_mi: true, silindi_mi: false })
+          .select('id').single()
+        if (firmaErr) throw firmaErr
+        firmaId = yeniFirma.id
+      }
+
       const projeData = {
         proje_adi: form.proje_adi,
-        firma_id: form.firma_id,
+        firma_id: firmaId,
         sozlesme_no: form.sozlesme_no || undefined,
         sozlesme_tarihi: form.sozlesme_tarihi || undefined,
         hedef_teslim_tarihi: form.hedef_teslim_tarihi || undefined,
