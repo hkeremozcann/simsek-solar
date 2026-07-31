@@ -10,10 +10,14 @@ const Projeler = lazy(() => import('@/pages/Projeler'))
 const YeniProje = lazy(() => import('@/pages/YeniProje'))
 const ProjeDetay = lazy(() => import('@/pages/ProjeDetay'))
 const ProjeDuzenle = lazy(() => import('@/pages/ProjeDuzenle'))
+const BlokTakibi = lazy(() => import('@/pages/BlokTakibi'))
+const HatalarListesi = lazy(() => import('@/pages/HatalarListesi'))
+const EksikImalat = lazy(() => import('@/pages/EksikImalat'))
+const SahaRaporlariListesi = lazy(() => import('@/pages/SahaRaporlariListesi'))
+const Raporlar = lazy(() => import('@/pages/Raporlar'))
 const Tanimlar = lazy(() => import('@/pages/Tanimlar'))
 const Ayarlar = lazy(() => import('@/pages/Ayarlar'))
 const ExcelAktarimi = lazy(() => import('@/pages/ExcelAktarimi'))
-const Raporlar = lazy(() => import('@/pages/Raporlar'))
 const Profil = lazy(() => import('@/pages/Profil'))
 
 const queryClient = new QueryClient({
@@ -31,11 +35,8 @@ const queryClient = new QueryClient({
 function LoadingSpinner() {
   return (
     <div className="min-h-screen bg-[#F5F7F9] flex items-center justify-center">
-      <div
-        className="w-8 h-8 border-2 border-[#B4531F] border-t-transparent rounded-full animate-spin"
-        role="status"
-        aria-label="Yükleniyor"
-      />
+      <div className="w-8 h-8 border-2 border-[#B4531F] border-t-transparent rounded-full animate-spin"
+        role="status" aria-label="Yükleniyor" />
     </div>
   )
 }
@@ -69,10 +70,14 @@ export default function App() {
                 <Route path="/projeler/yeni" element={<YeniProje />} />
                 <Route path="/projeler/:id" element={<ProjeDetay />} />
                 <Route path="/projeler/:id/duzenle" element={<ProjeDuzenle />} />
+                <Route path="/blok-takibi" element={<BlokTakibi />} />
+                <Route path="/hatalar" element={<HatalarListesi />} />
+                <Route path="/eksik-imalat" element={<EksikImalat />} />
+                <Route path="/saha-raporlari" element={<SahaRaporlariListesi />} />
+                <Route path="/analitik" element={<Raporlar />} />
                 <Route path="/tanimlar" element={<Tanimlar />} />
                 <Route path="/ayarlar" element={<Ayarlar />} />
                 <Route path="/excel-aktarimi" element={<ExcelAktarimi />} />
-                <Route path="/raporlar" element={<Raporlar />} />
                 <Route path="/profil" element={<Profil />} />
               </Route>
               <Route path="*" element={<Navigate to="/panel" replace />} />

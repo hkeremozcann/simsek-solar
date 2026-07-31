@@ -195,9 +195,6 @@ export default function ProjeDuzenle() {
               { label: 'Toplam kollektör', key: 'toplam_kollektor_sayisi' as const },
               { label: 'Toplam sehpa', key: 'toplam_sehpa_sayisi' as const },
               { label: 'Toplam pano', key: 'toplam_pano_sayisi' as const },
-              { label: 'Boyler sayısı', key: 'boyler_sayisi' as const },
-              { label: 'Boyler kapasitesi (lt)', key: 'boyler_kapasitesi_lt' as const },
-              { label: 'Pompa grubu', key: 'pompa_grubu_sayisi' as const },
             ].map(({ label, key }) => (
               <FormField key={key} label={label}>
                 {(id) => (
@@ -206,14 +203,6 @@ export default function ProjeDuzenle() {
                 )}
               </FormField>
             ))}
-            <FormField label="Sistem tipi" className="md:col-span-3">
-              {(id) => (
-                <Select id={id} value={form.sistem_tipi} onChange={(e) => g('sistem_tipi', e.target.value as SistemTipi)}>
-                  <option value="">— Seçin —</option>
-                  {SISTEM_TIPLERI.map((s) => <option key={s} value={s}>{s}</option>)}
-                </Select>
-              )}
-            </FormField>
           </div>
         </Card>
 
