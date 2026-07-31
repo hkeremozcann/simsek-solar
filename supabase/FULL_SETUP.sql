@@ -710,7 +710,7 @@ select
   p.id, p.proje_kodu, p.proje_adi, p.durum, p.aktif_mi,
   p.il, p.ilce, p.blok_sayisi, p.konut_sayisi,
   p.hedef_teslim_tarihi, p.tamamlanma_tarihi, p.son_hareket_tarihi,
-  p.satis_temsilcisi_id, p.firma_id, p.montaj_sorumlusu_id, p.bedelsiz_mi, p.taslak_mi,
+  p.satis_temsilcisi_id, p.firma_id, p.montaj_sorumlusu_id, p.bedelsiz_mi, p.taslak_mi, p.montaj_kapsami,
   f.kurum_tipi, f.ad as firma_adi,
   me.ad as montaj_ekibi_adi,
   count(distinct b.id) as toplam_blok,
