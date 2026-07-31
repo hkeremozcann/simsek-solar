@@ -11,8 +11,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { FormField, Input, Select, Textarea } from '@/components/ui/FormField'
 import {
-  ROL_ETIKETLERI, KURUM_TIPLERI, TURKIYE_ILLERI,
-  type KullaniciRolu, type KurumTipi
+  ROL_ETIKETLERI, TURKIYE_ILLERI,
+  type KullaniciRolu
 } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -69,7 +69,7 @@ function FirmalarPaneli() {
   const [acik, setAcik] = useState(false)
   const [duzenle, setDuzenle] = useState<string | null>(null)
   const [silOnayId, setSilOnayId] = useState<string | null>(null)
-  const bos = { ad: '', kurum_tipi: 'TOKİ' as KurumTipi, ana_yuklenici: '', il: '', ilce: '', telefon: '', genel_eposta: '', vergi_dairesi: '', vergi_no: '', adres: '', notlar: '' }
+  const bos = { ad: '', il: '', ilce: '', telefon: '', genel_eposta: '', vergi_dairesi: '', vergi_no: '', adres: '', notlar: '' }
   const [form, setForm] = useState(bos)
   const [yukleniyor, setYukleniyor] = useState(false)
   const [hata, setHata] = useState('')
@@ -102,8 +102,7 @@ function FirmalarPaneli() {
   function duzenleAc(firma: typeof firmalar[0]) {
     setDuzenle(firma.id)
     setForm({
-      ad: firma.ad, kurum_tipi: firma.kurum_tipi as KurumTipi,
-      ana_yuklenici: firma.ana_yuklenici || '', il: firma.il || '',
+      ad: firma.ad, il: firma.il || '',
       ilce: firma.ilce || '', telefon: firma.telefon || '',
       genel_eposta: firma.genel_eposta || '', vergi_dairesi: firma.vergi_dairesi || '',
       vergi_no: firma.vergi_no || '', adres: firma.adres || '', notlar: firma.notlar || '',
@@ -116,8 +115,7 @@ function FirmalarPaneli() {
     if (!form.ad.trim()) { setHata('Firma adı zorunludur.'); return }
     setYukleniyor(true); setHata('')
     const payload = {
-      ad: form.ad, kurum_tipi: form.kurum_tipi,
-      ana_yuklenici: form.ana_yuklenici || null, il: form.il || null,
+      ad: form.ad, il: form.il || null,
       ilce: form.ilce || null, telefon: form.telefon || null,
       genel_eposta: form.genel_eposta || null, vergi_dairesi: form.vergi_dairesi || null,
       vergi_no: form.vergi_no || null, adres: form.adres || null, notlar: form.notlar || null,
@@ -148,8 +146,7 @@ function FirmalarPaneli() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-[#0F1F33] truncate">{f.ad}</p>
-                  <p className="text-xs text-[#6B7785] mt-0.5">{f.kurum_tipi}{f.il ? ` · ${f.il}` : ''}</p>
-                  {f.ana_yuklenici && <p className="text-xs text-[#6B7785]">Yük: {f.ana_yuklenici}</p>}
+                  {f.il && <p className="text-xs text-[#6B7785] mt-0.5">{f.il}{f.ilce ? ` / ${f.ilce}` : ''}</p>}
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
                   <Button variant="ghost" size="sm" onClick={() => duzenleAc(f)} className="text-xs">Düzenle</Button>
@@ -179,14 +176,6 @@ function FirmalarPaneli() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <FormField label="Firma adı" required className="md:col-span-2">
               {id => <Input id={id} value={form.ad} onChange={e => g('ad', e.target.value)} placeholder="örn. TOKİ Gaziantep 3. Etap" error={!!hata && !form.ad} />}
-            </FormField>
-            <FormField label="Kurum tipi" required>
-              {id => <Select id={id} value={form.kurum_tipi} onChange={e => g('kurum_tipi', e.target.value as KurumTipi)}>
-                {KURUM_TIPLERI.map(k => <option key={k} value={k}>{k}</option>)}
-              </Select>}
-            </FormField>
-            <FormField label="Ana yüklenici">
-              {id => <Input id={id} value={form.ana_yuklenici} onChange={e => g('ana_yuklenici', e.target.value)} placeholder="İnşaat firması" />}
             </FormField>
             <FormField label="İl">
               {id => <Select id={id} value={form.il} onChange={e => g('il', e.target.value)}>
