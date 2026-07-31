@@ -12,7 +12,8 @@ import type { Proje, Blok } from '@/lib/types'
 export default function Raporlar() {
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
-  const { data: projeler = [], isLoading } = useProjects()
+  const { data: projeData, isLoading } = useProjects()
+  const projeler = projeData?.projeler ?? []
   const { data: kullanicilar = [] } = useKullanicilar()
 
   const filtreli = useMemo(() => {

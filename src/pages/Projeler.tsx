@@ -26,12 +26,13 @@ export default function Projeler() {
   const [siralama, setSiralama] = useState<SiralamaAlan>('olusturma_tarihi')
   const [siralamaYon, setSiralamaYon] = useState<'asc' | 'desc'>('desc')
 
-  const { data: projeler = [], isLoading, error } = useProjects({
+  const { data: projeData, isLoading, error } = useProjects({
     durum: durumFiltre || undefined,
     il: ilFiltre || undefined,
     satis_temsilcisi_id: temsilciFiltre || undefined,
   })
 
+  const projeler = projeData?.projeler ?? []
   const { data: kullanicilar = [] } = useKullanicilar()
 
   const filtrelenmis = useMemo(() => {

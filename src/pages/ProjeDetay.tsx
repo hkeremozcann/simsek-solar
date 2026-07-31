@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useProject, useUpdateAshama } from '@/hooks/useProjects'
+import { useProject, useUpdateAsama } from '@/hooks/useProjects'
 import { useAuth } from '@/contexts/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -32,7 +32,7 @@ export default function ProjeDetay() {
   const [topluSecim, setTopluSecim] = useState<string[]>([])
 
   const { data: proje, isLoading, error } = useProject(id!)
-  const updateAsama = useUpdateAshama()
+  const updateAsama = useUpdateAsama()
 
   if (isLoading) {
     return (
@@ -274,20 +274,14 @@ export default function ProjeDetay() {
           yazabilir={yazabilir}
           yonetici={rolKontrol(['yonetici'])}
           onKapat={() => setSecilenAsama(null)}
-          onKaydet={async (durum, sonuc, aciklama, kuralAtlandi) => {
+          onKaydet={async (durum, sonuc, aciklama, _kuralAtlandi) => {
             await updateAsama.mutateAsync({
               asamaId: secilenAsama.asama.id,
               projeId: proje.id,
-              blokId: secilenAsama.blok.id,
               durum,
               sonuc,
               aciklama,
-              oncekiAsama: {
-                durum: secilenAsama.asama.durum,
-                sonuc: secilenAsama.asama.sonuc,
-                aciklama: secilenAsama.asama.aciklama,
-              },
-              kuralAtlandi,
+              mevcutSurum: secilenAsama.asama.surum,
             })
             setSecilenAsama(null)
           }}

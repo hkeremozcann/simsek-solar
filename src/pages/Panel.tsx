@@ -16,7 +16,8 @@ export default function Panel() {
   const navigate = useNavigate()
   const { kullanici } = useAuth()
   const { data: stats } = useDashboardStats()
-  const { data: projeler = [], isLoading } = useProjects()
+  const { data: projeData, isLoading } = useProjects()
+  const projeler = projeData?.projeler ?? []
 
   // Aktif projeler
   const aktifProjeler = projeler.filter((p) => p.aktif_mi)
@@ -75,7 +76,7 @@ export default function Panel() {
             />
             <StatCard
               baslik="Bu ay devreye alınan"
-              deger={stats?.buAyDevreAlınan ?? '—'}
+              deger={stats?.buAyDevreAlinan ?? '—'}
               alt="blok"
               ikon={<span className="text-2xl" aria-hidden>●</span>}
               renk="warning"
