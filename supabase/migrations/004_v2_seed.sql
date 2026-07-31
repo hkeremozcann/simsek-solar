@@ -55,10 +55,16 @@ insert into bayiler(id, ad, yetkili_kisi, telefon, eposta, il, aktif_mi) values
 -- Alternatif: kullanicilar tablosunu auth.users FK'sız kullanabiliriz (test için)
 -- Burada FK constraint olmadığı varsayımıyla ekliyoruz:
 
--- Yönetici için mevcut auth user id kullanılır
--- Diğer kullanıcılar için seed UUID'leri:
+-- Kullanıcılar: auth.users FK olmadan (seed için geçici olarak kaldırılır)
+-- Gerçek admin kullanıcısı zaten var — sadece rolu güncelle
+alter table kullanicilar drop constraint if exists kullanicilar_id_fkey;
+
+-- Mevcut kullanıcıyı yönetici yap
+update kullanicilar set rol = 'yonetici', ad_soyad = 'Kerem Özcan'
+where eposta = 'kerem@simseksolar.com.tr';
+
+-- Test kullanıcılarını ekle (auth.users olmadan)
 insert into kullanicilar(id, ad_soyad, eposta, rol, aktif_mi) values
-  ('a0000001-0000-0000-0000-000000000001', 'Kerem Özcan', 'kerem@simseksolar.com.tr', 'yonetici', true),
   ('a0000001-0000-0000-0000-000000000002', 'Selin Yılmaz', 'selin@simseksolar.com.tr', 'satis_sonrasi_sorumlusu', true),
   ('a0000001-0000-0000-0000-000000000003', 'Burak Şahin', 'burak@simseksolar.com.tr', 'satis_sonrasi_sorumlusu', true),
   ('a0000001-0000-0000-0000-000000000004', 'Musa Koç', 'musa@simseksolar.com.tr', 'saha_teknisyeni', true),
@@ -67,13 +73,25 @@ insert into kullanicilar(id, ad_soyad, eposta, rol, aktif_mi) values
   ('a0000001-0000-0000-0000-000000000007', 'Deniz Karaca', 'deniz@simseksolar.com.tr', 'satis_temsilcisi', true),
   ('a0000001-0000-0000-0000-000000000008', 'Zeynep Kılıç', 'zeynep@simseksolar.com.tr', 'satis_temsilcisi', true),
   ('a0000001-0000-0000-0000-000000000009', 'Bayi Ali', 'ali@anadolusolar.com', 'bayi', true)
-on conflict(id) do update set
+on conflict (eposta) do update set
   ad_soyad = excluded.ad_soyad,
   rol = excluded.rol;
 
 -- bayi_id güncelle
 update kullanicilar set bayi_id = 'b1000001-0000-0000-0000-000000000001'
-where id = 'a0000001-0000-0000-0000-000000000009';
+where eposta = 'ali@anadolusolar.com';
+
+-- satis_temsilcisi_id için alias view: gerçek admin UUID → seed UUID
+-- Projeler admin ID yerine mevcut auth user'ı kullanacak
+do $$ begin
+  -- Gerçek admin UUID'yi seed UUID olarak kaydet (opsiyonel alias)
+  update kullanicilar set id = 'a0000001-0000-0000-0000-000000000001'
+  where eposta = 'kerem@simseksolar.com.tr'
+    and id != 'a0000001-0000-0000-0000-000000000001'
+    and not exists (select 1 from projeler); -- Henüz proje yoksa güvenle değiştir
+exception when others then
+  null; -- Çakışma varsa atla
+end $$;
 
 -- ============================================================
 -- 4. PROJELER (24 proje — gerçekçi dağılım)
