@@ -341,16 +341,12 @@ export function useDeleteProject() {
         throw new Error('Proje kodu hatalı. Silme işlemi iptal edildi.')
       }
 
-      // Fiziksel sil
+      // FK kısıtını aş: aktivite_logu.proje_id NULL yap (log kaydı kalır)
+      await supabase.from('aktivite_logu').update({ proje_id: null }).eq('proje_id', id)
+
+      // Fiziksel sil (diğer tablolar CASCADE ile otomatik silinir)
       const { error } = await supabase.from('projeler').delete().eq('id', id)
       if (error) throw error
-
-      await supabase.from('aktivite_logu').insert({
-        kullanici_id: kullanici.id,
-        tablo: 'projeler', kayit_id: id,
-        islem: 'silme',
-        yeni_deger: `Kalıcı silindi: ${onayKodu}`,
-      })
     },
     onSuccess: () => {
       yenileVeTemizle(queryClient)
