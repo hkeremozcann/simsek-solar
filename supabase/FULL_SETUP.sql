@@ -30,11 +30,11 @@ drop function if exists soft_delete() cascade;
 -- Materialized view
 drop materialized view if exists mv_proje_ozet;
 
--- Sequence'ler
-drop sequence if exists proje_sira_seq;
-drop sequence if exists hata_sira_seq;
-drop sequence if exists rapor_sira_seq;
-drop sequence if exists proje_sira_no_seq;
+-- Sequence'ler (CASCADE: bağımlı default değerleri de siler)
+drop sequence if exists proje_sira_seq cascade;
+drop sequence if exists hata_sira_seq cascade;
+drop sequence if exists rapor_sira_seq cascade;
+drop sequence if exists proje_sira_no_seq cascade;
 
 -- Tabloları CASCADE ile sil
 drop table if exists excel_aktarimlari cascade;
