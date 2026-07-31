@@ -26,6 +26,7 @@ export default function HatalarListesi() {
 
   const { data: hatalar = [], isLoading, error, refetch } = useQuery({
     queryKey: ['tum-hatalar', durumFiltre, siddetFiltre],
+    staleTime: 0,
     queryFn: async () => {
       // Önce aktif projeleri al
       const { data: aktifPrjler } = await supabase

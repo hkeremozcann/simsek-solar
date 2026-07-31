@@ -16,6 +16,7 @@ export default function SahaRaporlariListesi() {
 
   const { data: raporlar = [], isLoading, error, refetch } = useQuery({
     queryKey: ['tum-saha-raporlari', tipFiltre],
+    staleTime: 0,
     queryFn: async () => {
       const { data: aktifPrjler } = await supabase
         .from('projeler').select('id')

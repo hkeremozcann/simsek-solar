@@ -10,14 +10,15 @@ import { useAuth } from '@/contexts/AuthContext'
 // MV yenile + tüm ilgili cache'leri temizle
 async function yenileVeTemizle(queryClient: QueryClient, projeId?: string) {
   try { await supabase.rpc('yenile_proje_ozet') } catch { /* MV yoksa pas geç */ }
-  queryClient.invalidateQueries({ queryKey: ['mv-proje-ozet'] })
-  queryClient.invalidateQueries({ queryKey: ['portfoy-stats'] })
-  queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
-  queryClient.invalidateQueries({ queryKey: ['projeler'] })
+  // Tüm ilgili cache'leri temizle — proje silinince tüm ekranlar güncellensin
+  const keys = [
+    'mv-proje-ozet', 'portfoy-stats', 'dashboard-stats',
+    'projeler', 'tum-hatalar', 'tum-saha-raporlari', 'eksik-imalatlar',
+  ]
+  keys.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }))
   if (projeId) {
     queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
     queryClient.invalidateQueries({ queryKey: ['hatalar', projeId] })
-    queryClient.invalidateQueries({ queryKey: ['tum-hatalar'] })
   }
 }
 import { SAYFA_BOYUTU } from '@/config/firma'
