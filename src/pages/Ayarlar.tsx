@@ -68,11 +68,18 @@ function FirmalarPaneli() {
   const queryClient = useQueryClient()
   const [acik, setAcik] = useState(false)
   const [duzenle, setDuzenle] = useState<string | null>(null)
+  const [silOnayId, setSilOnayId] = useState<string | null>(null)
   const bos = { ad: '', kurum_tipi: 'TOKİ' as KurumTipi, ana_yuklenici: '', il: '', ilce: '', telefon: '', genel_eposta: '', vergi_dairesi: '', vergi_no: '', adres: '', notlar: '' }
   const [form, setForm] = useState(bos)
   const [yukleniyor, setYukleniyor] = useState(false)
   const [hata, setHata] = useState('')
   const [arama, setArama] = useState('')
+
+  async function silFirma(id: string) {
+    await supabase.from('firmalar').update({ silindi_mi: true }).eq('id', id)
+    queryClient.invalidateQueries({ queryKey: ['firmalar'] })
+    setSilOnayId(null)
+  }
 
   const filtreli = useMemo(() =>
     firmalar.filter(f =>
@@ -144,7 +151,11 @@ function FirmalarPaneli() {
                   <p className="text-xs text-[#6B7785] mt-0.5">{f.kurum_tipi}{f.il ? ` · ${f.il}` : ''}</p>
                   {f.ana_yuklenici && <p className="text-xs text-[#6B7785]">Yük: {f.ana_yuklenici}</p>}
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => duzenleAc(f)} className="flex-shrink-0 text-xs">Düzenle</Button>
+                <div className="flex gap-1 flex-shrink-0">
+                  <Button variant="ghost" size="sm" onClick={() => duzenleAc(f)} className="text-xs">Düzenle</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSilOnayId(f.id)}
+                    className="text-xs text-[#B3261E] hover:bg-[#B3261E]/10">Sil</Button>
+                </div>
               </div>
               {(f.telefon || f.genel_eposta) && (
                 <div className="mt-2 pt-2 border-t border-[#D6DCE3] space-y-0.5">
@@ -210,6 +221,21 @@ function FirmalarPaneli() {
             <Button variant="outline" onClick={() => setAcik(false)} className="flex-1">İptal</Button>
             <Button variant="primary" onClick={kaydet} loading={yukleniyor} className="flex-1">
               {duzenle ? 'Güncelle' : 'Firmayı kaydet'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal acik={!!silOnayId} kapat={() => setSilOnayId(null)} baslik="Firmayı sil" genislik="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-[#6B7785]">
+            <strong>{firmalar.find(f => f.id === silOnayId)?.ad}</strong> firması listeden kaldırılacak.
+            Bu firmaya bağlı mevcut projeler etkilenmez.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setSilOnayId(null)} className="flex-1">İptal</Button>
+            <Button variant="danger" onClick={() => silOnayId && silFirma(silOnayId)} className="flex-1">
+              Firmayı sil
             </Button>
           </div>
         </div>
