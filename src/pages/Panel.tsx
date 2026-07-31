@@ -1,42 +1,140 @@
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  FolderKanban, CheckCircle2, AlertCircle, Clock,
-  Zap, AlertTriangle, ArrowUpRight, ArrowDownRight,
-  Minus, ChevronRight, RefreshCw
+  FolderKanban, FileText, Grid3X3, Pipette,
+  CircuitBoard, Zap, AlertCircle, ChevronRight
 } from 'lucide-react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts'
-import { useDashboardStats, useMvProjeOzet, useAktiviteLogu, useAylikBlokVerisi } from '@/hooks/useProjects'
+import { useMvProjeOzet, useAktiviteLogu, useAylikBlokVerisi } from '@/hooks/useProjects'
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { ProjeDurumBadge, Badge } from '@/components/ui/Badge'
-import { CardSkeleton, HataDurumu, TableSkeleton } from '@/components/common/QueryState'
-import { formatTarih, formatGoreceli } from '@/lib/utils'
+import { Badge } from '@/components/ui/Badge'
+import { CardSkeleton, TableSkeleton, HataDurumu } from '@/components/common/QueryState'
+import { formatGoreceli, formatSayi } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import type { MvProjeOzet } from '@/lib/types'
+
+// ─── Portföy istatistikleri sorgusu ──────────────────────────
+function usePortfoyStats() {
+  return useQuery({
+    queryKey: ['portfoy-stats'],
+    staleTime: 1000 * 60 * 2,
+    queryFn: async () => {
+      const { data: projeler } = await supabase
+        .from('mv_proje_ozet').select('*')
+
+      if (!projeler) return null
+
+      const tumProjeler = projeler as MvProjeOzet[]
+      const toplamBlok = tumProjeler.reduce((s, p) => s + (p.blok_sayisi || 0), 0)
+
+      // Aşama bazında tamamlanan blok sayıları (projeler.mv_proje_ozet'ten)
+      const dizilimKapsam = tumProjeler.filter(p =>
+        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Panel Dizilim Montajı')
+      )
+      const borulamaKapsam = tumProjeler.filter(p =>
+        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Borulama Montajı')
+      )
+      const panoKapsam = tumProjeler.filter(p =>
+        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Pano Montajı')
+      )
+      const devreKapsam = tumProjeler.filter(p =>
+        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Devreye Alma')
+      )
+      const cizimKapsam = tumProjeler.filter(p =>
+        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Proje Desteği')
+      )
+
+      // Aşama bazında blok sayıları (veritabanından)
+      const [kaide, dizilim, borulama, pano, devre] = await Promise.all([
+        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
+          .eq('asama_tipi', 'Kaide Kontrolü').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
+        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
+          .eq('asama_tipi', 'Dizilim').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
+        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
+          .eq('asama_tipi', 'Borulama').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
+        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
+          .eq('asama_tipi', 'Pano Bağlantısı').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
+        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
+          .eq('asama_tipi', 'Devreye Alma').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
+      ])
+
+      // Toplam kollektör (proje_malzemeleri'nden)
+      const { data: kollektor } = await supabase
+        .from('proje_malzemeleri')
+        .select('sozlesme_adedi, malzeme_id, malzemeler!inner(kategori)')
+        .eq('malzemeler.kategori', 'Kollektör')
+
+      const toplamKollektor = (kollektor || []).reduce((s: number, r: { sozlesme_adedi: number }) => s + (r.sozlesme_adedi || 0), 0)
+
+      const acikHata = tumProjeler.reduce((s, p) => s + (p.acik_hata || 0), 0)
+      const hataliPrjSay = tumProjeler.filter(p => p.acik_hata > 0).length
+
+      return {
+        toplamBlok,
+        toplamKollektor,
+        aktifProje: tumProjeler.filter(p => p.aktif_mi && p.durum === 'Çalışıyor').length,
+        tamamlananProje: tumProjeler.filter(p => p.durum === 'Tamamlandı').length,
+        toplamProje: tumProjeler.length,
+        // Aşama bazında
+        dizilim: {
+          kapsamPrj: dizilimKapsam.length,
+          kapsamBlok: dizilimKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
+          tamamlanan: dizilim.count ?? 0,
+        },
+        borulama: {
+          kapsamPrj: borulamaKapsam.length,
+          kapsamBlok: borulamaKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
+          tamamlanan: borulama.count ?? 0,
+        },
+        pano: {
+          kapsamPrj: panoKapsam.length,
+          kapsamBlok: panoKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
+          tamamlanan: pano.count ?? 0,
+        },
+        devre: {
+          kapsamPrj: devreKapsam.length,
+          kapsamBlok: devreKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
+          tamamlanan: devre.count ?? 0,
+        },
+        cizim: {
+          kapsamPrj: cizimKapsam.length,
+        },
+        acikHata,
+        hataliPrjSay,
+      }
+    },
+  })
+}
 
 export default function Panel() {
   const navigate = useNavigate()
   const { kullanici } = useAuth()
-  const { data: stats, isLoading: statsYukleniyor, error: statsHata, refetch: statsYenile } = useDashboardStats()
-  const { data: projeler = [], isLoading: projelerYukleniyor, error: projelerHata, refetch: projelerYenile } = useMvProjeOzet()
-  const { data: aktiviteler = [], isLoading: aktiviteYukleniyor } = useAktiviteLogu(undefined, 15)
+  const { data: projeler = [], isLoading: prjYuk, error: prjHata, refetch: prjYenile } = useMvProjeOzet()
+  const { data: aktiviteler = [] } = useAktiviteLogu(undefined, 15)
   const { data: aylikVeri = [] } = useAylikBlokVerisi()
+  const { data: stats, isLoading: statsYuk } = usePortfoyStats()
 
-  const aktifProjeler = projeler.filter(p => p.aktif_mi || p.durum === 'Çalışıyor')
+  const aktifProjeler = projeler.filter(p => p.aktif_mi && p.durum === 'Çalışıyor')
   const dikkat = projeler
     .filter(p => p.acik_hata > 0 || p.gecikmis_mi || p.hareketsiz_mi)
-    .sort((a, b) => (b.acik_hata - a.acik_hata) || Number(b.gecikmis_mi) - Number(a.gecikmis_mi))
+    .sort((a, b) => b.acik_hata - a.acik_hata || Number(b.gecikmis_mi) - Number(a.gecikmis_mi))
     .slice(0, 8)
 
-  const kurumDagilim = projeler.reduce<Record<string, number>>((acc, p) => {
-    const tip = p.kurum_tipi || 'Diğer'
-    acc[tip] = (acc[tip] || 0) + 1
-    return acc
-  }, {})
+  const kurumDagilim = useMemo(() => {
+    const map: Record<string, number> = {}
+    projeler.forEach(p => {
+      const k = p.kurum_tipi || 'Diğer'
+      map[k] = (map[k] || 0) + 1
+    })
+    return Object.entries(map).sort((a, b) => b[1] - a[1])
+  }, [projeler])
 
   return (
     <div className="min-h-screen bg-[#F5F7F9]">
@@ -44,12 +142,9 @@ export default function Panel() {
         baslik="Kontrol paneli"
         aciklama={`Hoş geldiniz, ${kullanici?.ad_soyad?.split(' ')[0] || ''}`}
         eylemler={
-          <Button
-            variant="primary"
-            size="sm"
+          <Button variant="primary" size="sm"
             leftIcon={<FolderKanban size={14} />}
-            onClick={() => navigate('/projeler/yeni')}
-          >
+            onClick={() => navigate('/projeler/yeni')}>
             Yeni proje
           </Button>
         }
@@ -57,95 +152,141 @@ export default function Panel() {
 
       <div className="p-4 md:p-6 space-y-6">
 
-        {/* ── 6 Özet Kutu ────────────────────────────────────── */}
+        {/* ── 7 Takip Kutusu ─────────────────────────────────── */}
         <section aria-labelledby="ozet-baslik">
-          <h2 id="ozet-baslik" className="sr-only">Özet istatistikler</h2>
+          <h2 id="ozet-baslik" className="sr-only">Portföy özeti</h2>
+          {statsYuk ? <CardSkeleton sayi={7} /> : (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
 
-          {statsYukleniyor ? (
-            <CardSkeleton sayi={6} />
-          ) : statsHata ? (
-            <HataDurumu hata={statsHata as Error} tekrarDene={statsYenile} mesaj="İstatistikler yüklenemedi" />
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <OzetKutu
-                baslik="Aktif proje"
-                deger={stats?.aktifProje ?? 0}
+              {/* Aktif */}
+              <TakipKutusu
+                baslik="Aktif"
                 Ikon={FolderKanban}
-                renk="text-[#1B4B73]"
-                bg="bg-[#1B4B73]/10"
+                renk="#1B4B73"
+                projeAdet={stats?.aktifProje ?? 0}
+                toplamProje={stats?.toplamProje ?? 0}
+                serit={`${formatSayi(stats?.toplamBlok ?? 0)} blok`}
                 tikla={() => navigate('/projeler?durum=Çalışıyor')}
               />
-              <OzetKutu
-                baslik="Tamamlanan"
-                deger={stats?.tamamlananProje ?? 0}
-                Ikon={CheckCircle2}
-                renk="text-[#1B7A4B]"
-                bg="bg-[#1B7A4B]/10"
-                tikla={() => navigate('/projeler?durum=Tamamlandı')}
+
+              {/* Proje Çizimi */}
+              <TakipKutusu
+                baslik="Proje Çizimi"
+                Ikon={FileText}
+                renk="#6B7785"
+                projeAdet={stats?.cizim.kapsamPrj ?? 0}
+                toplamProje={stats?.toplamProje ?? 0}
+                serit="proje desteği kapsamında"
+                tikla={() => navigate('/projeler?kapsam=Proje+Desteği')}
               />
-              <OzetKutu
-                baslik="Açık hata"
-                deger={stats?.acikHata ?? 0}
-                Ikon={AlertCircle}
-                renk={stats?.acikHata ? 'text-[#B3261E]' : 'text-[#6B7785]'}
-                bg={stats?.acikHata ? 'bg-[#B3261E]/10' : 'bg-[#F5F7F9]'}
-                tikla={() => navigate('/hatalar')}
-                vurgu={!!stats?.acikHata}
+
+              {/* Dizilim */}
+              <AsamaKutusu
+                baslik="Dizilim"
+                Ikon={Grid3X3}
+                renk="#B4531F"
+                tamamlanan={stats?.dizilim.tamamlanan ?? 0}
+                kapsamBlok={stats?.dizilim.kapsamBlok ?? 0}
+                toplamBlok={stats?.toplamBlok ?? 0}
+                kapsamPrj={stats?.dizilim.kapsamPrj ?? 0}
+                tikla={() => navigate('/projeler?kapsam=Panel+Dizilim+Montajı')}
               />
-              <OzetKutu
-                baslik="Süresi geçmiş hata"
-                deger={stats?.sureciHata ?? 0}
-                Ikon={Clock}
-                renk={stats?.sureciHata ? 'text-[#7A1512]' : 'text-[#6B7785]'}
-                bg={stats?.sureciHata ? 'bg-[#7A1512]/10' : 'bg-[#F5F7F9]'}
-                tikla={() => navigate('/hatalar?suresi=gecmis')}
-                vurgu={!!stats?.sureciHata}
+
+              {/* Borulama */}
+              <AsamaKutusu
+                baslik="Borulama"
+                Ikon={Pipette}
+                renk="#1B4B73"
+                tamamlanan={stats?.borulama.tamamlanan ?? 0}
+                kapsamBlok={stats?.borulama.kapsamBlok ?? 0}
+                toplamBlok={stats?.toplamBlok ?? 0}
+                kapsamPrj={stats?.borulama.kapsamPrj ?? 0}
+                tikla={() => navigate('/projeler?kapsam=Borulama+Montajı')}
               />
-              <OzetKutu
-                baslik="Bu ay devreye"
-                deger={stats?.buAyDevreAlinan ?? 0}
-                alt="blok"
+
+              {/* Pano */}
+              <AsamaKutusu
+                baslik="Pano"
+                Ikon={CircuitBoard}
+                renk="#1B4B73"
+                tamamlanan={stats?.pano.tamamlanan ?? 0}
+                kapsamBlok={stats?.pano.kapsamBlok ?? 0}
+                toplamBlok={stats?.toplamBlok ?? 0}
+                kapsamPrj={stats?.pano.kapsamPrj ?? 0}
+                tikla={() => navigate('/projeler?kapsam=Pano+Montajı')}
+              />
+
+              {/* Devreye Alım */}
+              <AsamaKutusu
+                baslik="Devreye Alım"
                 Ikon={Zap}
-                renk="text-[#B4531F]"
-                bg="bg-[#B4531F]/10"
+                renk="#1B7A4B"
+                tamamlanan={stats?.devre.tamamlanan ?? 0}
+                kapsamBlok={stats?.devre.kapsamBlok ?? 0}
+                toplamBlok={stats?.toplamBlok ?? 0}
+                kapsamPrj={stats?.devre.kapsamPrj ?? 0}
+                tikla={() => navigate('/projeler?kapsam=Devreye+Alma')}
+                vurgulu
               />
-              <OzetKutu
-                baslik="Gecikmiş proje"
-                deger={stats?.gecikmisPrje ?? 0}
-                Ikon={AlertTriangle}
-                renk={stats?.gecikmisPrje ? 'text-[#9A6700]' : 'text-[#6B7785]'}
-                bg={stats?.gecikmisPrje ? 'bg-[#9A6700]/10' : 'bg-[#F5F7F9]'}
-                tikla={() => navigate('/projeler?gecikmiş=1')}
-                vurgu={!!stats?.gecikmisPrje}
+
+              {/* Hatalı */}
+              <TakipKutusu
+                baslik="Hatalı"
+                Ikon={AlertCircle}
+                renk={stats?.acikHata ? '#B3261E' : '#6B7785'}
+                projeAdet={stats?.hataliPrjSay ?? 0}
+                toplamProje={stats?.toplamProje ?? 0}
+                serit={`${formatSayi(stats?.acikHata ?? 0)} açık hata`}
+                tikla={() => navigate('/hatalar')}
+                uyari={!!(stats?.acikHata)}
               />
             </div>
           )}
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* ── Sol 2/3 ────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Dikkat gerektirenler */}
+            {/* Dikkat listesi */}
             {dikkat.length > 0 && (
               <Card padding="none">
-                <CardHeader
-                  title="Dikkat gerektiriyor"
+                <CardHeader title="Dikkat gerektiriyor"
                   subtitle={`${dikkat.length} proje önlem bekliyor`}
                   className="px-4 pt-4 pb-0"
                   action={
-                    <button
-                      onClick={() => navigate('/hatalar')}
-                      className="text-xs text-[#1B4B73] hover:underline flex items-center gap-1"
-                    >
+                    <button onClick={() => navigate('/hatalar')}
+                      className="text-xs text-[#1B4B73] hover:underline flex items-center gap-1">
                       Tüm hatalar <ChevronRight size={13} />
                     </button>
                   }
                 />
-                <ul role="list" className="divide-y divide-[#D6DCE3] mt-3">
+                <ul className="divide-y divide-[#D6DCE3] mt-3">
                   {dikkat.map(p => (
-                    <DikkatSatiri key={p.id} proje={p} onClick={() => navigate(`/projeler/${p.id}`)} />
+                    <li key={p.id}>
+                      <button
+                        onClick={() => navigate(`/projeler/${p.id}`)}
+                        className="w-full text-left px-4 py-3 hover:bg-[#F5F7F9] transition-colors flex items-center justify-between gap-3 min-h-[52px]">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-[#1B4B73] font-semibold flex-shrink-0"
+                              style={{ fontFamily: 'IBM Plex Mono' }}>
+                              {p.proje_kodu}
+                            </span>
+                            <span className="text-sm font-medium text-[#0F1F33] truncate">{p.proje_adi}</span>
+                          </div>
+                          <div className="flex gap-1.5 mt-0.5 flex-wrap">
+                            {p.acik_hata > 0 && (
+                              <Badge variant="error">
+                                <AlertCircle size={10} aria-hidden /> {p.acik_hata} hata
+                              </Badge>
+                            )}
+                            {p.gecikmis_mi && <Badge variant="warning">Gecikmiş</Badge>}
+                            {p.hareketsiz_mi && <Badge variant="neutral">Hareketsiz</Badge>}
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className="text-[#D6DCE3] flex-shrink-0" aria-hidden />
+                      </button>
+                    </li>
                   ))}
                 </ul>
               </Card>
@@ -157,56 +298,77 @@ export default function Panel() {
                 title="Devam eden projeler"
                 subtitle={`${aktifProjeler.length} aktif proje`}
                 className="px-4 pt-4 pb-0"
-                action={
-                  <Button variant="ghost" size="sm" onClick={() => navigate('/projeler')}>
-                    Tümünü gör
-                  </Button>
-                }
+                action={<Button variant="ghost" size="sm" onClick={() => navigate('/projeler')}>Tümünü gör</Button>}
               />
-
-              {projelerYukleniyor ? (
-                <div className="mt-3">
-                  <TableSkeleton satirSayisi={4} sutunSayisi={3} />
-                </div>
-              ) : projelerHata ? (
-                <HataDurumu hata={projelerHata as Error} tekrarDene={projelerYenile} />
+              {prjYuk ? (
+                <div className="mt-3"><TableSkeleton satirSayisi={5} sutunSayisi={3} /></div>
+              ) : prjHata ? (
+                <HataDurumu hata={prjHata as Error} tekrarDene={prjYenile} />
               ) : aktifProjeler.length === 0 ? (
-                <div className="px-4 pb-6 pt-4 text-center">
-                  <p className="text-sm text-[#6B7785] mb-3">Henüz aktif proje yok.</p>
+                <div className="px-4 py-6 text-center">
+                  <p className="text-sm text-[#6B7785] mb-3">Aktif proje yok.</p>
                   <Button variant="primary" size="sm" onClick={() => navigate('/projeler/yeni')}>
                     İlk projeyi oluştur
                   </Button>
                 </div>
               ) : (
-                <ul role="list" className="divide-y divide-[#D6DCE3] mt-3">
-                  {aktifProjeler.slice(0, 8).map(p => (
-                    <ProjeSatiri key={p.id} proje={p} onClick={() => navigate(`/projeler/${p.id}`)} />
-                  ))}
+                <ul className="divide-y divide-[#D6DCE3] mt-3">
+                  {aktifProjeler.slice(0, 8).map(p => {
+                    const pct = p.saha_yuzdesi ?? 0
+                    return (
+                      <li key={p.id}>
+                        <button
+                          onClick={() => navigate(`/projeler/${p.id}`)}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#F5F7F9] transition-colors min-h-[52px]">
+                          <div className="flex items-center justify-between gap-3 mb-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs font-mono text-[#1B4B73] font-semibold flex-shrink-0"
+                                style={{ fontFamily: 'IBM Plex Mono' }}>{p.proje_kodu}</span>
+                              <span className="text-sm font-medium text-[#0F1F33] truncate">{p.proje_adi}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {p.acik_hata > 0 && (
+                                <Badge variant="error">
+                                  <AlertCircle size={9} aria-hidden /> {p.acik_hata}
+                                </Badge>
+                              )}
+                              <span className="text-xs font-mono text-[#6B7785]"
+                                style={{ fontFamily: 'IBM Plex Mono' }}>%{pct}</span>
+                            </div>
+                          </div>
+                          <div className="h-1.5 bg-[#D6DCE3] rounded-full overflow-hidden"
+                            role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                            <div className="h-full rounded-full transition-all"
+                              style={{ width: `${pct}%`, backgroundColor: pct === 100 ? '#1B7A4B' : '#B4531F' }} />
+                          </div>
+                          <p className="text-xs text-[#6B7785] mt-1">
+                            {p.il} · {p.blok_sayisi} blok · {p.kurum_tipi || p.firma_adi}
+                          </p>
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </Card>
 
-            {/* Aylık devreye alınan blok */}
+            {/* Aylık blok grafiği */}
             <Card>
-              <CardHeader
-                title="Aylık devreye alınan blok"
-                subtitle="Son 12 ay — çubuk: aylık, çizgi: kümülatif"
-              />
+              <CardHeader title="Aylık devreye alınan blok"
+                subtitle="Son 12 ay — çubuk: aylık, çizgi: kümülatif" />
               {aylikVeri.length === 0 ? (
                 <p className="text-sm text-[#6B7785] py-4 text-center">Henüz devreye alınan blok yok.</p>
               ) : (
-                <div className="h-48" role="img" aria-label="Aylık devreye alınan blok grafiği">
+                <div className="h-44">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={aylikVeri} margin={{ top: 4, right: 16, bottom: 0, left: -20 }}>
+                    <BarChart data={aylikVeri} margin={{ top: 4, right: 8, bottom: 0, left: -24 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#D6DCE3" vertical={false} />
-                      <XAxis dataKey="ay" tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono', fill: '#6B7785' }} />
-                      <YAxis tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono', fill: '#6B7785' }} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ fontFamily: 'IBM Plex Sans', fontSize: 12, border: '1px solid #D6DCE3', borderRadius: 4 }}
-                        labelFormatter={(label) => label}
-                      />
-                      <Bar dataKey="sayi" fill="#B4531F" radius={[2, 2, 0, 0]} name="sayi" />
-                      <Line type="monotone" dataKey="kumulatif" stroke="#1B4B73" strokeWidth={2} dot={false} name="kumulatif" />
+                      <XAxis dataKey="ay" tick={{ fontSize: 10, fontFamily: 'IBM Plex Mono', fill: '#6B7785' }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: 'IBM Plex Mono', fill: '#6B7785' }} allowDecimals={false} />
+                      <Tooltip contentStyle={{ fontFamily: 'IBM Plex Sans', fontSize: 12, border: '1px solid #D6DCE3', borderRadius: 4 }}
+                        labelFormatter={(l) => l} />
+                      <Bar dataKey="sayi" fill="#B4531F" radius={[2,2,0,0]} name="Aylık" />
+                      <Line type="monotone" dataKey="kumulatif" stroke="#1B4B73" strokeWidth={2} dot={false} name="Kümülatif" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -214,57 +376,47 @@ export default function Panel() {
             </Card>
           </div>
 
-          {/* ── Sağ 1/3 ────────────────────────────────────── */}
+          {/* Sağ sütun */}
           <div className="space-y-6">
-
             {/* Kurum dağılımı */}
             <Card>
               <CardHeader title="Kurum dağılımı" />
-              {Object.keys(kurumDagilim).length === 0 ? (
-                <p className="text-sm text-[#6B7785]">Henüz proje yok.</p>
+              {kurumDagilim.length === 0 ? (
+                <p className="text-sm text-[#6B7785]">Henüz veri yok.</p>
               ) : (
                 <ul className="space-y-2.5">
-                  {Object.entries(kurumDagilim)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([tip, sayi]) => {
-                      const max = Math.max(...Object.values(kurumDagilim))
-                      return (
-                        <li key={tip}>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="text-[#0F1F33] truncate text-xs">{tip}</span>
-                            <span className="font-mono text-xs text-[#6B7785] flex-shrink-0 ml-2"
-                              style={{ fontFamily: 'IBM Plex Mono' }}>
-                              {sayi}
-                            </span>
-                          </div>
-                          <div className="h-1.5 bg-[#D6DCE3] rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-[#1B4B73] rounded-full"
-                              style={{ width: `${(sayi / max) * 100}%` }}
-                            />
-                          </div>
-                        </li>
-                      )
-                    })}
+                  {kurumDagilim.map(([tip, sayi]) => {
+                    const max = kurumDagilim[0]?.[1] || 1
+                    return (
+                      <li key={tip}>
+                        <div className="flex justify-between text-xs mb-0.5">
+                          <span className="text-[#0F1F33] truncate">{tip}</span>
+                          <span className="font-mono text-[#6B7785] flex-shrink-0 ml-2"
+                            style={{ fontFamily: 'IBM Plex Mono' }}>{sayi}</span>
+                        </div>
+                        <div className="h-1.5 bg-[#D6DCE3] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#1B4B73] rounded-full"
+                            style={{ width: `${(sayi / max) * 100}%` }} />
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </Card>
 
-            {/* Son 15 aktivite */}
+            {/* Son aktiviteler */}
             <Card padding="none">
               <CardHeader title="Son aktiviteler" className="px-4 pt-4 pb-0" />
-              {aktiviteYukleniyor ? (
-                <div className="mt-2"><TableSkeleton satirSayisi={5} sutunSayisi={2} /></div>
-              ) : aktiviteler.length === 0 ? (
+              {aktiviteler.length === 0 ? (
                 <p className="text-sm text-[#6B7785] px-4 py-4">Henüz aktivite yok.</p>
               ) : (
-                <ul className="divide-y divide-[#D6DCE3] mt-2" role="list">
-                  {aktiviteler.slice(0, 15).map((a: {
-                    id: string; islem: string; tablo: string; alan?: string;
-                    yeni_deger?: string; tarih: string;
+                <ul className="divide-y divide-[#D6DCE3] mt-2">
+                  {aktiviteler.slice(0, 12).map((a: {
+                    id: string; islem: string; tablo: string; yeni_deger?: string; tarih: string
                     kullanici?: { ad_soyad: string } | null
                   }) => (
-                    <li key={a.id} className="px-4 py-2.5">
+                    <li key={a.id} className="px-4 py-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-xs font-medium text-[#0F1F33] truncate">
@@ -274,12 +426,8 @@ export default function Panel() {
                             {islemMesg(a.islem, a.tablo, a.yeni_deger)}
                           </p>
                         </div>
-                        <time
-                          className="text-[10px] text-[#6B7785] flex-shrink-0 font-mono"
-                          dateTime={a.tarih}
-                          style={{ fontFamily: 'IBM Plex Mono' }}
-                          title={formatTarih(a.tarih)}
-                        >
+                        <time className="text-[10px] text-[#6B7785] flex-shrink-0 font-mono"
+                          dateTime={a.tarih} style={{ fontFamily: 'IBM Plex Mono' }}>
                           {formatGoreceli(a.tarih)}
                         </time>
                       </div>
@@ -288,7 +436,6 @@ export default function Panel() {
                 </ul>
               )}
             </Card>
-
           </div>
         </div>
       </div>
@@ -296,143 +443,84 @@ export default function Panel() {
   )
 }
 
-// ─── Özet kutu bileşeni ───────────────────────────────────────
-function OzetKutu({
-  baslik, deger, alt, Ikon, renk, bg, tikla, vurgu,
-}: {
-  baslik: string
-  deger: number
-  alt?: string
-  Ikon: React.ElementType
-  renk: string
-  bg: string
-  tikla?: () => void
-  vurgu?: boolean
+// ─── Takip kutusu (Aktif / Çizim / Hatalı) ───────────────────
+function TakipKutusu({ baslik, Ikon, renk, projeAdet, toplamProje, serit, tikla, uyari }: {
+  baslik: string; Ikon: React.ElementType; renk: string
+  projeAdet: number; toplamProje: number; serit: string
+  tikla?: () => void; uyari?: boolean
 }) {
   const Tag = tikla ? 'button' : 'div'
+  const pct = toplamProje ? Math.floor((projeAdet / toplamProje) * 100) : 0
   return (
-    <Tag
-      onClick={tikla}
-      className={`bg-white border rounded p-3 text-left w-full transition-colors ${
+    <Tag onClick={tikla}
+      className={`bg-white border rounded p-2.5 text-left w-full transition-colors ${
         tikla ? 'hover:border-[#1B4B73]/40 cursor-pointer' : ''
-      } ${vurgu ? 'border-l-4 border-l-[#B3261E] border-[#B3261E]/30' : 'border-[#D6DCE3]'}`}
-    >
-      <div className={`inline-flex p-1.5 rounded mb-2 ${bg}`}>
-        <Ikon size={14} className={renk} aria-hidden />
+      } ${uyari ? 'border-l-4 border-l-[#B3261E] border-[#B3261E]/20' : 'border-[#D6DCE3]'}`}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Ikon size={13} style={{ color: renk }} aria-hidden />
+        <span className="text-xs text-[#6B7785] font-medium leading-tight">{baslik}</span>
       </div>
-      <p className="text-xs text-[#6B7785] font-medium">{baslik}</p>
-      <p
-        className="text-xl font-bold text-[#0F1F33] mt-0.5 tabular"
-        style={{ fontFamily: 'IBM Plex Mono' }}
-        aria-label={`${baslik}: ${deger}${alt ? ' ' + alt : ''}`}
-      >
-        {deger}
-        {alt && <span className="text-xs font-normal text-[#6B7785] ml-1">{alt}</span>}
+      <p className="text-2xl font-bold text-[#0F1F33] tabular leading-none"
+        style={{ fontFamily: 'IBM Plex Mono' }}>{formatSayi(projeAdet)}</p>
+      <p className="text-xs text-[#6B7785] mt-0.5">
+        <span className="font-mono" style={{ fontFamily: 'IBM Plex Mono' }}>%{pct}</span> · {toplamProje} prj
       </p>
+      <div className="mt-1.5 pt-1.5 border-t border-[#D6DCE3]">
+        <p className="text-[10px] text-[#6B7785] leading-tight">{serit}</p>
+      </div>
     </Tag>
   )
 }
 
-// ─── Dikkat satırı ────────────────────────────────────────────
-function DikkatSatiri({ proje, onClick }: { proje: MvProjeOzet; onClick: () => void }) {
+// ─── Aşama kutusu (Dizilim / Borulama / Pano / Devreye) ──────
+function AsamaKutusu({ baslik, Ikon, renk, tamamlanan, kapsamBlok, toplamBlok, kapsamPrj, tikla, vurgulu }: {
+  baslik: string; Ikon: React.ElementType; renk: string
+  tamamlanan: number; kapsamBlok: number; toplamBlok: number; kapsamPrj: number
+  tikla?: () => void; vurgulu?: boolean
+}) {
+  const pct = kapsamBlok ? Math.floor((tamamlanan / kapsamBlok) * 100) : 0
+  const Tag = tikla ? 'button' : 'div'
   return (
-    <li>
-      <button
-        onClick={onClick}
-        className="w-full text-left px-4 py-3 hover:bg-[#F5F7F9] transition-colors flex items-center justify-between gap-3 min-h-[56px]"
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-mono text-[#1B4B73] font-semibold flex-shrink-0"
-              style={{ fontFamily: 'IBM Plex Mono' }}>
-              {proje.proje_kodu}
-            </span>
-            <span className="text-sm font-medium text-[#0F1F33] truncate">{proje.proje_adi}</span>
-          </div>
-          <div className="flex gap-1.5 mt-1 flex-wrap">
-            {proje.acik_hata > 0 && (
-              <Badge variant="error">
-                <AlertCircle size={10} aria-hidden />
-                {proje.acik_hata} hata
-              </Badge>
-            )}
-            {proje.gecikmis_mi && (
-              <Badge variant="warning">
-                <Clock size={10} aria-hidden />
-                Gecikmiş
-              </Badge>
-            )}
-            {proje.hareketsiz_mi && (
-              <Badge variant="neutral">
-                <Minus size={10} aria-hidden />
-                Hareketsiz
-              </Badge>
-            )}
-          </div>
+    <Tag onClick={tikla}
+      className={`bg-white border rounded p-2.5 text-left w-full transition-colors ${
+        tikla ? 'hover:border-[#1B4B73]/40 cursor-pointer' : ''
+      } ${vurgulu ? 'border-[#1B7A4B]/30' : 'border-[#D6DCE3]'}`}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Ikon size={13} style={{ color: renk }} aria-hidden />
+        <span className="text-xs text-[#6B7785] font-medium leading-tight">{baslik}</span>
+      </div>
+      <p className="text-2xl font-bold text-[#0F1F33] tabular leading-none"
+        style={{ fontFamily: 'IBM Plex Mono' }}>{formatSayi(kapsamPrj)}</p>
+      <p className="text-xs font-mono mt-0.5" style={{ fontFamily: 'IBM Plex Mono', color: renk }}>
+        %{pct}
+      </p>
+      {/* Portföy şeridi */}
+      <div className="mt-1.5 pt-1.5 border-t border-[#D6DCE3]">
+        <div className="flex justify-between text-[10px] text-[#6B7785] mb-0.5">
+          <span>{formatSayi(tamamlanan)}/{formatSayi(kapsamBlok)} blok</span>
         </div>
-        <ChevronRight size={16} className="text-[#D6DCE3] flex-shrink-0" aria-hidden />
-      </button>
-    </li>
+        <div className="h-1 bg-[#D6DCE3] rounded-full overflow-hidden"
+          role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-full rounded-full transition-all"
+            style={{ width: `${pct}%`, backgroundColor: renk }} />
+        </div>
+        {toplamBlok > 0 && (
+          <p className="text-[10px] text-[#D6DCE3] mt-0.5 text-right">
+            / {formatSayi(toplamBlok)} toplam
+          </p>
+        )}
+      </div>
+    </Tag>
   )
 }
 
-// ─── Proje listesi satırı ─────────────────────────────────────
-function ProjeSatiri({ proje, onClick }: { proje: MvProjeOzet; onClick: () => void }) {
-  const pct = proje.saha_yuzdesi ?? 0
-  return (
-    <li>
-      <button
-        onClick={onClick}
-        className="w-full text-left px-4 py-3 hover:bg-[#F5F7F9] transition-colors min-h-[60px]"
-      >
-        <div className="flex items-center justify-between gap-3 mb-1.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xs font-mono text-[#1B4B73] font-semibold flex-shrink-0"
-              style={{ fontFamily: 'IBM Plex Mono' }}>
-              {proje.proje_kodu}
-            </span>
-            <span className="text-sm font-medium text-[#0F1F33] truncate">{proje.proje_adi}</span>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {proje.acik_hata > 0 && (
-              <Badge variant="error">
-                <AlertCircle size={10} aria-hidden /> {proje.acik_hata}
-              </Badge>
-            )}
-            <span className="text-xs font-mono text-[#6B7785]" style={{ fontFamily: 'IBM Plex Mono' }}>
-              %{pct}
-            </span>
-          </div>
-        </div>
-        <div className="h-1.5 bg-[#D6DCE3] rounded-full overflow-hidden"
-          role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
-          aria-label={`${proje.proje_adi} saha ilerlemesi %${pct}`}>
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${pct}%`,
-              backgroundColor: pct === 100 ? '#1B7A4B' : '#B4531F',
-            }}
-          />
-        </div>
-        <p className="text-xs text-[#6B7785] mt-1">
-          {proje.il} · {proje.blok_sayisi} blok · {proje.kurum_tipi}
-        </p>
-      </button>
-    </li>
-  )
-}
-
-// ─── Aktivite mesaj formatı ───────────────────────────────────
 function islemMesg(islem: string, tablo: string, yeniDeger?: string): string {
-  const tabloAdi: Record<string, string> = {
-    projeler: 'proje', blok_asamalari: 'aşama',
-    hatalar: 'hata', saha_raporlari: 'rapor', kullanicilar: 'kullanıcı',
+  const adlar: Record<string, string> = {
+    projeler: 'proje', blok_asamalari: 'aşama', hatalar: 'hata', saha_raporlari: 'rapor',
   }
-  const ad = tabloAdi[tablo] || tablo
+  const ad = adlar[tablo] || tablo
   if (islem === 'ekleme') return `Yeni ${ad} oluşturuldu${yeniDeger ? ` (${yeniDeger})` : ''}`
   if (islem === 'guncelleme') return `${ad} güncellendi${yeniDeger ? ` → ${yeniDeger}` : ''}`
-  if (islem === 'gonderim') return `Rapor gönderildi`
-  if (islem === 'kural_asimi') return `Kural aşımı (${ad})`
+  if (islem === 'gonderim') return 'Rapor gönderildi'
   return `${ad} ${islem}`
 }

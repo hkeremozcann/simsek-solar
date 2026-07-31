@@ -215,6 +215,35 @@ export default function Projeler() {
           <span className="text-xs text-[#6B7785] truncate block">{getValue<string>() || '—'}</span>
         ),
       },
+      // ─── Aşama sütunları (8/12 + ince çubuk, kapsam dışıysa –) ───
+      {
+        id: 'asama_dizilim',
+        header: 'Dizilim',
+        size: 76,
+        accessorKey: 'id',
+        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Panel Dizilim Montajı" alanAdi="dizilim_tamamlanan" />,
+      },
+      {
+        id: 'asama_borulama',
+        header: 'Borulama',
+        size: 76,
+        accessorKey: 'proje_kodu',
+        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Borulama Montajı" alanAdi="borulama_tamamlanan" />,
+      },
+      {
+        id: 'asama_pano',
+        header: 'Pano',
+        size: 76,
+        accessorKey: 'proje_adi',
+        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Pano Montajı" alanAdi="pano_tamamlanan" />,
+      },
+      {
+        id: 'asama_devre',
+        header: 'Devreye',
+        size: 76,
+        accessorKey: 'firma_id',
+        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Devreye Alma" alanAdi="devreye_alinan_blok" />,
+      },
       {
         id: 'son_hareket_tarihi',
         accessorKey: 'son_hareket_tarihi',
@@ -551,6 +580,34 @@ export default function Projeler() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ─── Aşama hücresi bileşeni ───────────────────────────────────
+function AsamaHucresi({ proje, kapsam, alanAdi }: {
+  proje: Proje; kapsam: string; alanAdi: string
+}) {
+  const p = proje as unknown as Record<string, unknown>
+  const montajKapsami = p['montaj_kapsami'] as string[] | undefined
+  if (!montajKapsami?.includes(kapsam)) {
+    return <span className="text-xs text-[#D6DCE3] text-center block">—</span>
+  }
+  const tamamlanan = (p[alanAdi] as number) ?? 0
+  const toplam = proje.blok_sayisi || 0
+  const pct = toplam > 0 ? Math.floor((tamamlanan / toplam) * 100) : 0
+  return (
+    <div className="text-center">
+      <span className="text-xs font-mono block leading-tight" style={{ fontFamily: 'IBM Plex Mono' }}>
+        {tamamlanan}/{toplam}
+      </span>
+      <div className="h-1 bg-[#D6DCE3] rounded-full overflow-hidden mt-0.5 mx-1">
+        <div className="h-full rounded-full" style={{
+          width: `${pct}%`,
+          backgroundColor: pct === 100 ? '#1B7A4B' : '#B4531F',
+        }} />
+      </div>
     </div>
   )
 }

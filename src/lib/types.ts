@@ -191,13 +191,19 @@ export interface Bildirim {
 
 export interface MvProjeOzet {
   id: string; proje_kodu: string; proje_adi: string
-  durum: ProjeDurumu; il: string; blok_sayisi: number
+  durum: ProjeDurumu; aktif_mi: boolean; il: string; ilce?: string
+  blok_sayisi: number; konut_sayisi?: number
   hedef_teslim_tarihi?: string; tamamlanma_tarihi?: string
   son_hareket_tarihi?: string; satis_temsilcisi_id: string
-  firma_id: string; kurum_tipi: KurumTipi
+  firma_id: string; montaj_sorumlusu_id?: string; bedelsiz_mi: boolean; taslak_mi: boolean
+  montaj_kapsami?: string[]
+  kurum_tipi?: KurumTipi; firma_adi?: string; montaj_ekibi_adi?: string
   toplam_blok: number; tamamlanan_asama: number; toplam_asama: number
-  saha_yuzdesi: number; acik_hata: number
+  saha_yuzdesi: number; devreye_alinan_blok: number; acik_hata: number; sevk_yuzdesi: number
+  kaide_tamamlanan?: number; dizilim_tamamlanan?: number
+  borulama_tamamlanan?: number; pano_tamamlanan?: number
   gecikmis_mi: boolean; hareketsiz_mi: boolean
+  hareketsiz_gun?: number; gecikme_gun?: number
 }
 
 // ─── Sabitler ────────────────────────────────────────────────
