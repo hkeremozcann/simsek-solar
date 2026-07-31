@@ -677,13 +677,36 @@ function ProjeDestek({
   const queryClient = useQueryClient()
   const [yukleniyor, setYukleniyor] = useState<string | null>(null)
   const [aciklamalar, setAciklamalar] = useState<Record<string, string>>({})
+  const [hataMap, setHataMap] = useState<Record<string, string>>({})
 
   async function durumGuncelle(dokumanId: string, yeniDurum: DokumanDurumu, aciklama?: string) {
     setYukleniyor(dokumanId)
-    await supabase.from('proje_dokumanlari')
-      .update({ durum: yeniDurum, aciklama: aciklama || null })
+    setHataMap(h => { const n = { ...h }; delete n[dokumanId]; return n })
+
+    const { error } = await supabase.from('proje_dokumanlari')
+      .update({ durum: yeniDurum, aciklama: aciklama !== undefined ? aciklama || null : undefined })
       .eq('id', dokumanId)
-    queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
+
+    if (error) {
+      // DB constraint uyuşmazlığı → yeni değerlerle yeniden dene (migration çalıştırılmamışsa)
+      const eskiEsleme: Record<DokumanDurumu, string> = {
+        'Dosya Bekleniyor': 'Başlamadı',
+        'Çiziliyor': 'Hazırlanıyor',
+        'Tamamlandı': 'Onaylandı',
+        'İptal Edildi': 'Revizyon İstendi',
+      }
+      const { error: err2 } = await supabase.from('proje_dokumanlari')
+        .update({ durum: eskiEsleme[yeniDurum] || yeniDurum })
+        .eq('id', dokumanId)
+
+      if (err2) {
+        setHataMap(h => ({ ...h, [dokumanId]: 'Güncelleme başarısız: ' + err2.message }))
+        setYukleniyor(null)
+        return
+      }
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
     setYukleniyor(null)
   }
 
@@ -772,6 +795,11 @@ function ProjeDestek({
             {dok.gonderim_tarihi && (
               <p className="text-xs text-[#6B7785]">
                 Gönderim: <span className="font-mono">{formatTarih(dok.gonderim_tarihi)}</span>
+              </p>
+            )}
+            {hataMap[dok.id] && (
+              <p className="text-xs text-[#B3261E] bg-red-50 p-1.5 rounded" role="alert">
+                {hataMap[dok.id]}
               </p>
             )}
           </div>
