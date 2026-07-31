@@ -26,114 +26,86 @@ function usePortfoyStats() {
     queryKey: ['portfoy-stats'],
     staleTime: 0, // Her ziyarette taze veri
     queryFn: async () => {
-      const { data: projeler } = await supabase
-        .from('mv_proje_ozet').select('*')
+      // SADECE aktif projeleri çek (İptal ve silinen dahil değil)
+      const { data: aktifProjeler } = await supabase
+        .from('projeler')
+        .select('id, blok_sayisi, montaj_kapsami, durum, aktif_mi')
+        .neq('durum', 'İptal')
+        .eq('silindi_mi', false)
 
-      if (!projeler) return null
+      const prjList = aktifProjeler ?? []
+      if (prjList.length === 0) {
+        return {
+          toplamBlok: 0, toplamKollektor: 0, aktifProje: 0, tamamlananProje: 0, toplamProje: 0,
+          dizilim: { kapsamPrj: 0, kapsamBlok: 0, tamamlanan: 0 },
+          borulama: { kapsamPrj: 0, kapsamBlok: 0, tamamlanan: 0 },
+          pano: { kapsamPrj: 0, kapsamBlok: 0, tamamlanan: 0 },
+          devre: { kapsamPrj: 0, kapsamBlok: 0, tamamlanan: 0 },
+          cizim: { kapsamPrj: 0, dokumanStats: { kaide: { toplam: 0, tamamlanan: 0 }, borulama: { toplam: 0, tamamlanan: 0 }, uygulama: { toplam: 0, tamamlanan: 0 } } },
+          acikHata: 0, hataliPrjSay: 0,
+        }
+      }
 
-      const tumProjeler = projeler as MvProjeOzet[]
-      const toplamBlok = tumProjeler.reduce((s, p) => s + (p.blok_sayisi || 0), 0)
+      const aktifIds = prjList.map(p => p.id)
+      const toplamBlok = prjList.reduce((s: number, p: { blok_sayisi: number }) => s + (p.blok_sayisi || 0), 0)
 
-      // Aşama bazında tamamlanan blok sayıları (projeler.mv_proje_ozet'ten)
-      const dizilimKapsam = tumProjeler.filter(p =>
-        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Panel Dizilim Montajı')
-      )
-      const borulamaKapsam = tumProjeler.filter(p =>
-        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Borulama Montajı')
-      )
-      const panoKapsam = tumProjeler.filter(p =>
-        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Pano Montajı')
-      )
-      const devreKapsam = tumProjeler.filter(p =>
-        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Devreye Alma')
-      )
-      const cizimKapsam = tumProjeler.filter(p =>
-        (p as { montaj_kapsami?: string[] }).montaj_kapsami?.includes('Proje Desteği')
-      )
+      // Kapsam filtreleri
+      const kapsam = (k: string) => prjList.filter((p: { montaj_kapsami?: string[] }) => p.montaj_kapsami?.includes(k))
+      const dizilimK = kapsam('Panel Dizilim Montajı')
+      const borulamaK = kapsam('Borulama Montajı')
+      const panoK = kapsam('Pano Montajı')
+      const devreK = kapsam('Devreye Alma')
+      const cizimK = kapsam('Proje Desteği')
 
-      // Aşama bazında blok sayıları (veritabanından)
-      const [kaide, dizilim, borulama, pano, devre] = await Promise.all([
-        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
-          .eq('asama_tipi', 'Kaide Kontrolü').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
-        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
-          .eq('asama_tipi', 'Dizilim').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
-        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
-          .eq('asama_tipi', 'Borulama').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
-        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
-          .eq('asama_tipi', 'Pano Bağlantısı').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
-        supabase.from('blok_asamalari').select('id', { count: 'exact', head: true })
-          .eq('asama_tipi', 'Devreye Alma').eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun'),
+      // Aktif projelerin bloklarını al
+      const { data: aktifBloklar } = await supabase.from('bloklar').select('id').in('proje_id', aktifIds)
+      const blokIds = (aktifBloklar ?? []).map((b: { id: string }) => b.id)
+
+      // Blok ID'sine göre filtreli aşama sayıları
+      const asamaSay = async (tip: string) => {
+        if (blokIds.length === 0) return 0
+        const { count } = await supabase.from('blok_asamalari')
+          .select('id', { count: 'exact', head: true })
+          .in('blok_id', blokIds)
+          .eq('asama_tipi', tip).eq('durum', 'Tamamlandı').eq('sonuc', 'Uygun')
+        return count ?? 0
+      }
+
+      const [dizTam, borTam, panTam, devTam] = await Promise.all([
+        asamaSay('Dizilim'), asamaSay('Borulama'), asamaSay('Pano Bağlantısı'), asamaSay('Devreye Alma'),
       ])
 
-      // Toplam kollektör (proje_malzemeleri'nden)
-      const { data: kollektor } = await supabase
-        .from('proje_malzemeleri')
-        .select('sozlesme_adedi, malzeme_id, malzemeler!inner(kategori)')
-        .eq('malzemeler.kategori', 'Kollektör')
-
-      const toplamKollektor = (kollektor || []).reduce((s: number, r: { sozlesme_adedi: number }) => s + (r.sozlesme_adedi || 0), 0)
-
-      const acikHata = tumProjeler.reduce((s, p) => s + (p.acik_hata || 0), 0)
-      const hataliPrjSay = tumProjeler.filter(p => p.acik_hata > 0).length
-
-      // Doküman istatistikleri (Proje Çizimi kutusu için)
+      // Aktif projelerin dokümanları
       const { data: dokumanlar } = await supabase
-        .from('proje_dokumanlari')
-        .select('dokuman_tipi, durum')
+        .from('proje_dokumanlari').select('dokuman_tipi, durum').in('proje_id', aktifIds)
 
-      const dokumanStats = {
-        kaide:    { toplam: 0, tamamlanan: 0 },
-        borulama: { toplam: 0, tamamlanan: 0 },
-        uygulama: { toplam: 0, tamamlanan: 0 },
-      };
-      (dokumanlar || []).forEach(d => {
-        // Eski ve yeni DB değerlerinin tamamını kapsıyoruz
-        const tamamlandi = ['Tamamlandı', 'Onaylandı', 'Müşteriye Gönderildi'].includes(d.durum)
-        if (d.dokuman_tipi === 'Kaide Projesi') {
-          dokumanStats.kaide.toplam++
-          if (tamamlandi) dokumanStats.kaide.tamamlanan++
-        } else if (d.dokuman_tipi === 'Borulama Projesi') {
-          dokumanStats.borulama.toplam++
-          if (tamamlandi) dokumanStats.borulama.tamamlanan++
-        } else if (d.dokuman_tipi === 'Uygulama Projesi') {
-          dokumanStats.uygulama.toplam++
-          if (tamamlandi) dokumanStats.uygulama.tamamlanan++
-        }
+      const dokumanStats = { kaide: { toplam: 0, tamamlanan: 0 }, borulama: { toplam: 0, tamamlanan: 0 }, uygulama: { toplam: 0, tamamlanan: 0 } }
+      ;(dokumanlar ?? []).forEach((d: { dokuman_tipi: string; durum: string }) => {
+        const tam = ['Tamamlandı', 'Onaylandı', 'Müşteriye Gönderildi'].includes(d.durum)
+        if (d.dokuman_tipi === 'Kaide Projesi') { dokumanStats.kaide.toplam++; if (tam) dokumanStats.kaide.tamamlanan++ }
+        else if (d.dokuman_tipi === 'Borulama Projesi') { dokumanStats.borulama.toplam++; if (tam) dokumanStats.borulama.tamamlanan++ }
+        else if (d.dokuman_tipi === 'Uygulama Projesi') { dokumanStats.uygulama.toplam++; if (tam) dokumanStats.uygulama.tamamlanan++ }
       })
+
+      // Aktif projelerin açık hataları
+      const { count: acikHata } = await supabase.from('hatalar')
+        .select('id', { count: 'exact', head: true })
+        .in('proje_id', aktifIds)
+        .in('durum', ['Açık', 'Düzeltiliyor', 'Yeniden Kontrolde'])
 
       return {
         toplamBlok,
-        toplamKollektor,
-        aktifProje: tumProjeler.filter(p => p.aktif_mi && p.durum === 'Çalışıyor').length,
-        tamamlananProje: tumProjeler.filter(p => p.durum === 'Tamamlandı').length,
-        toplamProje: tumProjeler.length,
-        // Aşama bazında
-        dizilim: {
-          kapsamPrj: dizilimKapsam.length,
-          kapsamBlok: dizilimKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
-          tamamlanan: dizilim.count ?? 0,
-        },
-        borulama: {
-          kapsamPrj: borulamaKapsam.length,
-          kapsamBlok: borulamaKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
-          tamamlanan: borulama.count ?? 0,
-        },
-        pano: {
-          kapsamPrj: panoKapsam.length,
-          kapsamBlok: panoKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
-          tamamlanan: pano.count ?? 0,
-        },
-        devre: {
-          kapsamPrj: devreKapsam.length,
-          kapsamBlok: devreKapsam.reduce((s, p) => s + (p.blok_sayisi || 0), 0),
-          tamamlanan: devre.count ?? 0,
-        },
-        cizim: {
-          kapsamPrj: cizimKapsam.length,
-          dokumanStats,
-        },
-        acikHata,
-        hataliPrjSay,
+        toplamKollektor: 0,
+        aktifProje: prjList.filter((p: { durum: string; aktif_mi: boolean }) => p.durum === 'Çalışıyor').length,
+        tamamlananProje: prjList.filter((p: { durum: string }) => p.durum === 'Tamamlandı').length,
+        toplamProje: prjList.length,
+        dizilim: { kapsamPrj: dizilimK.length, kapsamBlok: dizilimK.reduce((s: number, p: { blok_sayisi: number }) => s + (p.blok_sayisi || 0), 0), tamamlanan: dizTam },
+        borulama: { kapsamPrj: borulamaK.length, kapsamBlok: borulamaK.reduce((s: number, p: { blok_sayisi: number }) => s + (p.blok_sayisi || 0), 0), tamamlanan: borTam },
+        pano: { kapsamPrj: panoK.length, kapsamBlok: panoK.reduce((s: number, p: { blok_sayisi: number }) => s + (p.blok_sayisi || 0), 0), tamamlanan: panTam },
+        devre: { kapsamPrj: devreK.length, kapsamBlok: devreK.reduce((s: number, p: { blok_sayisi: number }) => s + (p.blok_sayisi || 0), 0), tamamlanan: devTam },
+        cizim: { kapsamPrj: cizimK.length, dokumanStats },
+        acikHata: acikHata ?? 0,
+        hataliPrjSay: 0,
       }
     },
   })
