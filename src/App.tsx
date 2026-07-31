@@ -12,6 +12,7 @@ const ProjeDetay = lazy(() => import('@/pages/ProjeDetay'))
 const ProjeDuzenle = lazy(() => import('@/pages/ProjeDuzenle'))
 const Tanimlar = lazy(() => import('@/pages/Tanimlar'))
 const Ayarlar = lazy(() => import('@/pages/Ayarlar'))
+const ExcelAktarimi = lazy(() => import('@/pages/ExcelAktarimi'))
 const Raporlar = lazy(() => import('@/pages/Raporlar'))
 const Profil = lazy(() => import('@/pages/Profil'))
 
@@ -70,6 +71,7 @@ export default function App() {
                 <Route path="/projeler/:id/duzenle" element={<ProjeDuzenle />} />
                 <Route path="/tanimlar" element={<Tanimlar />} />
                 <Route path="/ayarlar" element={<Ayarlar />} />
+                <Route path="/excel-aktarimi" element={<ExcelAktarimi />} />
                 <Route path="/raporlar" element={<Raporlar />} />
                 <Route path="/profil" element={<Profil />} />
               </Route>

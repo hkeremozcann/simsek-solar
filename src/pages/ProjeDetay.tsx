@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useProject, useUpdateAsama } from '@/hooks/useProjects'
+import { useProject } from '@/hooks/useProjects'
+import { BlokMatrisi as BlokMatrisiBileseni } from './BlokMatrisi'
 import { useAuth } from '@/contexts/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -25,14 +26,7 @@ export default function ProjeDetay() {
   const navigate = useNavigate()
   const { kullanici, rolKontrol } = useAuth()
   const [aktifSekme, setAktifSekme] = useState<Sekme>('matris')
-  const [secilenAsama, setSecilenAsama] = useState<{
-    asama: BlokAsamasi
-    blok: Blok
-  } | null>(null)
-  const [topluSecim, setTopluSecim] = useState<string[]>([])
-
   const { data: proje, isLoading, error } = useProject(id!)
-  const updateAsama = useUpdateAsama()
 
   if (isLoading) {
     return (
@@ -233,14 +227,11 @@ export default function ProjeDetay() {
 
         {/* ─── BLOK MATRİSİ ─── */}
         {aktifSekme === 'matris' && (
-          <BlokMatrisi
+          <BlokMatrisiBileseni
             bloklar={bloklar}
+            projeId={proje.id}
             yazabilir={yazabilir}
             yonetici={rolKontrol(['yonetici'])}
-            topluSecim={topluSecim}
-            setTopluSecim={setTopluSecim}
-            onAsamaClick={(asama, blok) => setSecilenAsama({ asama, blok })}
-            projeId={proje.id}
           />
         )}
 
@@ -265,30 +256,7 @@ export default function ProjeDetay() {
         )}
       </div>
 
-      {/* Aşama güncelleme panel */}
-      {secilenAsama && (
-        <AsamaPanel
-          asama={secilenAsama.asama}
-          blok={secilenAsama.blok}
-          projeId={proje.id}
-          yazabilir={yazabilir}
-          yonetici={rolKontrol(['yonetici'])}
-          onKapat={() => setSecilenAsama(null)}
-          onKaydet={async (durum, sonuc, aciklama, _kuralAtlandi) => {
-            await updateAsama.mutateAsync({
-              asamaId: secilenAsama.asama.id,
-              projeId: proje.id,
-              durum,
-              sonuc,
-              aciklama,
-              mevcutSurum: secilenAsama.asama.surum,
-            })
-            setSecilenAsama(null)
-          }}
-          isPending={updateAsama.isPending}
-          allAsamalar={secilenAsama.blok.asamalar || []}
-        />
-      )}
+      {/* Aşama paneli BlokMatrisi bileşeni içinde yönetilir */}
     </div>
   )
 }

@@ -1,261 +1,518 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  useReactTable, getCoreRowModel, getSortedRowModel,
+  flexRender, type ColumnDef, type SortingState,
+} from '@tanstack/react-table'
+import {
+  Plus, Download, Filter, X, Search, LayoutList,
+  Table2, AlertCircle, Clock, ChevronUp, ChevronDown,
+  ChevronsUpDown, ChevronLeft, ChevronRight
+} from 'lucide-react'
 import { useProjects, useKullanicilar } from '@/hooks/useProjects'
+import { useAuth } from '@/contexts/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { ProjeDurumBadge, Badge } from '@/components/ui/Badge'
-import { EmptyState } from '@/components/ui/Card'
-import { ProgressBar } from '@/components/ui/Card'
+import { TableSkeleton, HataDurumu, BosDurum } from '@/components/common/QueryState'
 import { Input, Select } from '@/components/ui/FormField'
-import { sahaIlerlemeHesapla, acikHataSayisi, projeGecikmeMi, formatTarih, formatGoreceli } from '@/lib/utils'
-import { TURKIYE_ILLERI, type ProjeDurumu } from '@/lib/types'
+import { formatTarih, formatGoreceli, exportCSV, debounce } from '@/lib/utils'
+import { TURKIYE_ILLERI, KURUM_TIPLERI, type ProjeDurumu } from '@/lib/types'
 import type { Proje } from '@/lib/types'
-import { useAuth } from '@/contexts/AuthContext'
+import { SAYFA_BOYUTU } from '@/config/firma'
 
-type SiralamaAlan = 'proje_kodu' | 'proje_adi' | 'olusturma_tarihi' | 'hedef_teslim_tarihi'
+type GorunumTipi = 'normal' | 'excel'
 
 export default function Projeler() {
   const navigate = useNavigate()
   const { rolKontrol } = useAuth()
+  const yazabilir = rolKontrol(['yonetici', 'satis_sonrasi_sorumlusu'])
+
+  // Filtreler
   const [arama, setArama] = useState('')
+  const [aramaDebounced, setAramaDebounced] = useState('')
   const [durumFiltre, setDurumFiltre] = useState('')
   const [ilFiltre, setIlFiltre] = useState('')
   const [temsilciFiltre, setTemsilciFiltre] = useState('')
-  const [sadecHatali, setSadeceHatali] = useState(false)
-  const [sadecGecikmiş, setSadeceGecikmiş] = useState(false)
-  const [siralama, setSiralama] = useState<SiralamaAlan>('olusturma_tarihi')
-  const [siralamaYon, setSiralamaYon] = useState<'asc' | 'desc'>('desc')
+  const [sadecHatali, setSadecHatali] = useState(false)
+  const [sadecGecikmiş, setSadecGecikmiş] = useState(false)
+  const [filtrePanelAcik, setFiltrePanelAcik] = useState(false)
+  const [gorunum, setGorunum] = useState<GorunumTipi>('normal')
+  const [sayfa, setSayfa] = useState(0)
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'olusturma_tarihi', desc: true }])
 
-  const { data: projeData, isLoading, error } = useProjects({
+  const aramaGuncelle = useCallback(
+    debounce((val: string) => { setAramaDebounced(val); setSayfa(0) }, 300),
+    []
+  )
+
+  function handleArama(val: string) {
+    setArama(val)
+    aramaGuncelle(val)
+  }
+
+  const { data: projeData, isLoading, error, refetch } = useProjects({
     durum: durumFiltre || undefined,
     il: ilFiltre || undefined,
     satis_temsilcisi_id: temsilciFiltre || undefined,
+    arama: aramaDebounced || undefined,
+    sayfa,
   })
 
   const projeler = projeData?.projeler ?? []
+  const toplam = projeData?.toplam ?? 0
+  const sayfaSayisi = Math.ceil(toplam / SAYFA_BOYUTU)
+
   const { data: kullanicilar = [] } = useKullanicilar()
+  const temsilciler = kullanicilar.filter(k =>
+    ['yonetici', 'satis_sonrasi_sorumlusu', 'satis_temsilcisi'].includes(k.rol)
+  )
 
-  const filtrelenmis = useMemo(() => {
-    let list = [...projeler]
+  const aktifFiltreSayisi = [
+    durumFiltre, ilFiltre, temsilciFiltre,
+    sadecHatali, sadecGecikmiş
+  ].filter(Boolean).length
 
-    if (arama.trim()) {
-      const q = arama.toLowerCase()
-      list = list.filter((p) =>
-        p.proje_kodu.toLowerCase().includes(q) ||
-        p.proje_adi.toLowerCase().includes(q) ||
-        p.firma?.ad.toLowerCase().includes(q) || false
+  function filtreleriTemizle() {
+    setDurumFiltre(''); setIlFiltre(''); setTemsilciFiltre('')
+    setSadecHatali(false); setSadecGecikmiş(false)
+    setArama(''); setAramaDebounced(''); setSayfa(0)
+  }
+
+  // TanStack Table kolonları
+  const kolonlar = useMemo<ColumnDef<Proje>[]>(() => {
+    const temel: ColumnDef<Proje>[] = [
+      {
+        id: 'proje_kodu',
+        accessorKey: 'proje_kodu',
+        header: 'Kod',
+        size: 110,
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-[#1B4B73] font-semibold whitespace-nowrap"
+            style={{ fontFamily: 'IBM Plex Mono' }}>
+            {getValue<string>()}
+          </span>
+        ),
+      },
+      {
+        id: 'firma',
+        accessorFn: (r) => r.firma?.ad,
+        header: 'Firma',
+        size: 160,
+        cell: ({ getValue }) => (
+          <span className="text-sm text-[#6B7785] truncate block max-w-36">{getValue<string>() || '—'}</span>
+        ),
+      },
+      {
+        id: 'proje_adi',
+        accessorKey: 'proje_adi',
+        header: 'İş Adı',
+        size: 220,
+        cell: ({ row, getValue }) => (
+          <div className="min-w-0">
+            <span className="text-sm font-medium text-[#0F1F33] line-clamp-1">{getValue<string>()}</span>
+            {(row.original as { gecikmis_mi?: boolean; hareketsiz_mi?: boolean }).gecikmis_mi && (
+              <Badge variant="warning" className="mt-0.5">
+                <Clock size={9} aria-hidden /> Gecikmiş
+              </Badge>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: 'il',
+        accessorKey: 'il',
+        header: 'İl',
+        size: 90,
+        cell: ({ row, getValue }) => (
+          <span className="text-sm text-[#6B7785]">
+            {getValue<string>()}
+            {row.original.ilce ? <span className="text-xs"> / {row.original.ilce}</span> : null}
+          </span>
+        ),
+      },
+      {
+        id: 'konut_sayisi',
+        accessorKey: 'konut_sayisi',
+        header: 'Konut',
+        size: 80,
+        cell: ({ getValue }) => (
+          <span className="tabular text-sm text-right block"
+            style={{ fontFamily: 'IBM Plex Mono' }}>
+            {getValue<number>()?.toLocaleString('tr-TR') || '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'blok_sayisi',
+        accessorKey: 'blok_sayisi',
+        header: 'Blok',
+        size: 70,
+        cell: ({ getValue }) => (
+          <span className="tabular text-sm text-center block"
+            style={{ fontFamily: 'IBM Plex Mono' }}>
+            {getValue<number>()}
+          </span>
+        ),
+      },
+      {
+        id: 'saha_yuzdesi',
+        accessorFn: (r) => (r as { saha_yuzdesi?: number }).saha_yuzdesi ?? 0,
+        header: 'Saha %',
+        size: 90,
+        cell: ({ getValue }) => {
+          const pct = getValue<number>()
+          return (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-[#D6DCE3] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${pct}%`,
+                    backgroundColor: pct === 100 ? '#1B7A4B' : '#B4531F',
+                  }}
+                />
+              </div>
+              <span className="text-xs font-mono flex-shrink-0" style={{ fontFamily: 'IBM Plex Mono' }}>
+                %{pct}
+              </span>
+            </div>
+          )
+        },
+      },
+      {
+        id: 'acik_hata',
+        accessorFn: (r) => (r as { acik_hata?: number }).acik_hata ?? 0,
+        header: 'Hata',
+        size: 70,
+        cell: ({ getValue }) => {
+          const n = getValue<number>()
+          return n > 0 ? (
+            <Badge variant="error" className="justify-center w-full">
+              <AlertCircle size={10} aria-hidden /> {n}
+            </Badge>
+          ) : <span className="text-xs text-[#D6DCE3] text-center block">—</span>
+        },
+      },
+      {
+        id: 'durum',
+        accessorKey: 'durum',
+        header: 'Durum',
+        size: 120,
+        cell: ({ row }) => (
+          <ProjeDurumBadge
+            durum={row.original.durum as ProjeDurumu}
+            gecikmisMi={(row.original as { gecikmis_mi?: boolean }).gecikmis_mi}
+          />
+        ),
+      },
+      {
+        id: 'satis_temsilcisi',
+        accessorFn: (r) => r.satis_temsilcisi?.ad_soyad,
+        header: 'Temsilci',
+        size: 120,
+        cell: ({ getValue }) => (
+          <span className="text-xs text-[#6B7785] truncate block">{getValue<string>() || '—'}</span>
+        ),
+      },
+      {
+        id: 'son_hareket_tarihi',
+        accessorKey: 'son_hareket_tarihi',
+        header: 'Son Hareket',
+        size: 110,
+        cell: ({ getValue }) => (
+          <span className="text-xs text-[#6B7785] font-mono whitespace-nowrap"
+            style={{ fontFamily: 'IBM Plex Mono' }}>
+            {formatGoreceli(getValue<string>())}
+          </span>
+        ),
+      },
+    ]
+
+    // Excel görünümünde ekstra kolonlar
+    if (gorunum === 'excel') {
+      temel.push(
+        {
+          id: 'olusturma_tarihi',
+          accessorKey: 'olusturma_tarihi',
+          header: 'Kayıt Tarihi',
+          size: 100,
+          cell: ({ getValue }) => (
+            <span className="text-xs font-mono" style={{ fontFamily: 'IBM Plex Mono' }}>
+              {formatTarih(getValue<string>())}
+            </span>
+          ),
+        },
+        {
+          id: 'hedef_teslim',
+          accessorKey: 'hedef_teslim_tarihi',
+          header: 'Hedef Teslim',
+          size: 100,
+          cell: ({ getValue }) => (
+            <span className="text-xs font-mono" style={{ fontFamily: 'IBM Plex Mono' }}>
+              {formatTarih(getValue<string>())}
+            </span>
+          ),
+        },
+        {
+          id: 'sozlesme_no',
+          accessorKey: 'sozlesme_no',
+          header: 'Sözleşme No',
+          size: 120,
+          cell: ({ getValue }) => <span className="text-xs text-[#6B7785]">{getValue<string>() || '—'}</span>,
+        },
+        {
+          id: 'sistem_tipi',
+          accessorKey: 'sistem_tipi',
+          header: 'Sistem',
+          size: 100,
+          cell: ({ getValue }) => <span className="text-xs text-[#6B7785]">{getValue<string>() || '—'}</span>,
+        }
       )
     }
 
-    if (sadecHatali) {
-      list = list.filter((p) => p.bloklar && acikHataSayisi(p.bloklar) > 0)
-    }
+    return temel
+  }, [gorunum])
 
-    if (sadecGecikmiş) {
-      list = list.filter((p) => projeGecikmeMi(p.hedef_teslim_tarihi, p.durum))
-    }
+  const tablo = useReactTable({
+    data: projeler,
+    columns: kolonlar,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualPagination: true,
+    pageCount: sayfaSayisi,
+  })
 
-    list.sort((a, b) => {
-      const valA = String(a[siralama] || '')
-      const valB = String(b[siralama] || '')
-      const cmp = valA.localeCompare(valB, 'tr')
-      return siralamaYon === 'asc' ? cmp : -cmp
-    })
-
-    return list
-  }, [projeler, arama, sadecHatali, sadecGecikmiş, siralama, siralamaYon])
-
-  function toggleSiralama(alan: SiralamaAlan) {
-    if (siralama === alan) {
-      setSiralamaYon((y) => (y === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSiralama(alan)
-      setSiralamaYon('asc')
-    }
+  function exportExcel() {
+    const basliklar = ['Sıra', 'Proje Kodu', 'Firma', 'İş Adı', 'İl', 'İlçe', 'Konut', 'Blok',
+      'Saha %', 'Açık Hata', 'Durum', 'Temsilci', 'Son Hareket']
+    const satirlar = projeler.map((p, i) => [
+      String(i + 1 + sayfa * SAYFA_BOYUTU),
+      p.proje_kodu,
+      p.firma?.ad || '',
+      p.proje_adi,
+      p.il,
+      p.ilce || '',
+      String((p as { konut_sayisi?: number }).konut_sayisi || 0),
+      String(p.blok_sayisi),
+      String((p as { saha_yuzdesi?: number }).saha_yuzdesi ?? 0),
+      String((p as { acik_hata?: number }).acik_hata ?? 0),
+      p.durum,
+      p.satis_temsilcisi?.ad_soyad || '',
+      formatTarih(p.son_hareket_tarihi),
+    ])
+    exportCSV([basliklar, ...satirlar], `projeler-${new Date().toISOString().split('T')[0]}.csv`)
   }
-
-  function exportCSV() {
-    const satirlar = [
-      ['Kod', 'Proje Adı', 'Kurum', 'İl', 'Blok', 'İlerleme %', 'Durum', 'Temsilci', 'Hedef Tarih'],
-      ...filtrelenmis.map((p) => [
-        p.proje_kodu,
-        p.proje_adi,
-        p.firma?.ad || '',
-        p.il,
-        String(p.blok_sayisi),
-        String(sahaIlerlemeHesapla(p.bloklar || [])),
-        p.durum,
-        p.satis_temsilcisi?.ad_soyad || '',
-        formatTarih(p.hedef_teslim_tarihi),
-      ]),
-    ]
-    const csv = satirlar.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `projeler-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const temsilciler = kullanicilar.filter((k) =>
-    ['satis_temsilcisi', 'satis_sonrasi_sorumlusu', 'yonetici'].includes(k.rol)
-  )
 
   return (
-    <div className="min-h-screen bg-[#F5F7F9]">
+    <div className="min-h-screen bg-[#F5F7F9] flex flex-col">
       <PageHeader
-        baslik="Projeler"
-        aciklama={`${filtrelenmis.length} proje listeleniyor`}
+        baslik={`Projeler${toplam > 0 ? ` (${toplam.toLocaleString('tr-TR')})` : ''}`}
+        aciklama={isLoading ? 'Yükleniyor…' : `${toplam.toLocaleString('tr-TR')} proje`}
         eylemler={
-          <>
-            <Button variant="outline" size="sm" onClick={exportCSV}>
-              ↓ CSV
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={exportExcel}>
+              CSV
             </Button>
-            {rolKontrol(['yonetici', 'satis_sonrasi_sorumlusu']) && (
-              <Button variant="primary" size="sm" onClick={() => navigate('/projeler/yeni')}>
-                + Yeni proje ekle
+            {yazabilir && (
+              <Button variant="primary" size="sm" leftIcon={<Plus size={14} />}
+                onClick={() => navigate('/projeler/yeni')}>
+                Yeni proje
               </Button>
             )}
-          </>
+          </div>
         }
       />
 
-      {/* Filtreler */}
-      <div className="bg-white border-b border-[#D6DCE3] px-4 md:px-6 py-3">
+      {/* ── Filtre çubuğu ── */}
+      <div className="bg-white border-b border-[#D6DCE3] px-4 md:px-6 py-2.5 sticky top-0 z-20">
         <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative flex-1 min-w-48">
+          {/* Arama */}
+          <div className="relative min-w-48 flex-1 max-w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7785]" aria-hidden />
             <Input
               value={arama}
-              onChange={(e) => setArama(e.target.value)}
-              placeholder="Proje kodu, adı, firma..."
-              aria-label="Proje arama"
+              onChange={(e) => handleArama(e.target.value)}
+              placeholder="Kod, firma, iş adı, il…"
+              className="pl-8 h-9 text-sm"
+              aria-label="Proje ara"
             />
+            {arama && (
+              <button onClick={() => handleArama('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6B7785] hover:text-[#B3261E]">
+                <X size={13} aria-label="Aramayı temizle" />
+              </button>
+            )}
           </div>
 
-          <Select
-            value={durumFiltre}
-            onChange={(e) => setDurumFiltre(e.target.value)}
-            className="w-36"
-            aria-label="Durum filtresi"
-          >
+          {/* Durum */}
+          <Select value={durumFiltre} onChange={(e) => { setDurumFiltre(e.target.value); setSayfa(0) }}
+            className="h-9 text-sm w-36" aria-label="Durum filtresi">
             <option value="">Tüm durumlar</option>
-            <option value="Çalışıyor">Çalışıyor</option>
-            <option value="Beklemede">Beklemede</option>
-            <option value="Tamamlandı">Tamamlandı</option>
-            <option value="İptal">İptal</option>
+            <option>Çalışıyor</option>
+            <option>Beklemede</option>
+            <option>Tamamlandı</option>
+            <option>İptal</option>
           </Select>
 
-          <Select
-            value={ilFiltre}
-            onChange={(e) => setIlFiltre(e.target.value)}
-            className="w-36"
-            aria-label="İl filtresi"
+          {/* Filtreler paneli */}
+          <button
+            onClick={() => setFiltrePanelAcik(f => !f)}
+            className={`h-9 px-3 text-sm rounded border flex items-center gap-1.5 transition-colors ${
+              aktifFiltreSayisi > 0
+                ? 'border-[#B4531F] bg-[#B4531F]/5 text-[#B4531F]'
+                : 'border-[#D6DCE3] text-[#6B7785] hover:border-[#6B7785]'
+            }`}
           >
-            <option value="">Tüm iller</option>
-            {TURKIYE_ILLERI.sort().map((il) => (
-              <option key={il} value={il}>{il}</option>
-            ))}
-          </Select>
+            <Filter size={13} aria-hidden />
+            Filtreler
+            {aktifFiltreSayisi > 0 && (
+              <span className="bg-[#B4531F] text-white text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+                {aktifFiltreSayisi}
+              </span>
+            )}
+          </button>
 
-          <Select
-            value={temsilciFiltre}
-            onChange={(e) => setTemsilciFiltre(e.target.value)}
-            className="w-44"
-            aria-label="Temsilci filtresi"
-          >
-            <option value="">Tüm temsilciler</option>
-            {temsilciler.map((k) => (
-              <option key={k.id} value={k.id}>{k.ad_soyad}</option>
-            ))}
-          </Select>
-
-          <label className="flex items-center gap-1.5 text-sm cursor-pointer min-h-[44px] px-2">
-            <input
-              type="checkbox"
-              checked={sadecHatali}
-              onChange={(e) => setSadeceHatali(e.target.checked)}
-              className="w-4 h-4"
-            />
-            Sadece hatalı
-          </label>
-
-          <label className="flex items-center gap-1.5 text-sm cursor-pointer min-h-[44px] px-2">
-            <input
-              type="checkbox"
-              checked={sadecGecikmiş}
-              onChange={(e) => setSadeceGecikmiş(e.target.checked)}
-              className="w-4 h-4"
-            />
-            Gecikmiş
-          </label>
-
-          {(arama || durumFiltre || ilFiltre || temsilciFiltre || sadecHatali || sadecGecikmiş) && (
+          {/* Görünüm toggle */}
+          <div className="flex border border-[#D6DCE3] rounded overflow-hidden ml-auto">
             <button
-              onClick={() => {
-                setArama(''); setDurumFiltre(''); setIlFiltre('')
-                setTemsilciFiltre(''); setSadeceHatali(false); setSadeceGecikmiş(false)
-              }}
-              className="text-sm text-[#6B7785] hover:text-[#B3261E] min-h-[44px] px-2"
+              onClick={() => setGorunum('normal')}
+              className={`h-9 px-2.5 text-xs flex items-center gap-1 transition-colors ${
+                gorunum === 'normal' ? 'bg-[#0F1F33] text-white' : 'text-[#6B7785] hover:bg-[#F5F7F9]'
+              }`}
+              title="Normal görünüm"
             >
-              Filtreleri temizle
+              <LayoutList size={14} aria-hidden />
+            </button>
+            <button
+              onClick={() => setGorunum('excel')}
+              className={`h-9 px-2.5 text-xs flex items-center gap-1 transition-colors border-l border-[#D6DCE3] ${
+                gorunum === 'excel' ? 'bg-[#0F1F33] text-white' : 'text-[#6B7785] hover:bg-[#F5F7F9]'
+              }`}
+              title="Excel görünümü"
+            >
+              <Table2 size={14} aria-hidden />
+              <span className="hidden sm:inline text-xs">Excel</span>
+            </button>
+          </div>
+
+          {aktifFiltreSayisi > 0 && (
+            <button onClick={filtreleriTemizle}
+              className="text-xs text-[#6B7785] hover:text-[#B3261E] flex items-center gap-1 min-h-[36px] px-1">
+              <X size={12} aria-hidden /> Temizle
             </button>
           )}
         </div>
-      </div>
 
-      {/* Tablo */}
-      <div className="p-4 md:p-6">
-        {isLoading && (
-          <div className="text-center py-16 text-[#6B7785]">Yükleniyor…</div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 border border-[#B3261E]/20 rounded p-4 text-sm text-[#B3261E]" role="alert">
-            Projeler yüklenemedi. Sayfayı yenileyin.
+        {/* Açılır filtre paneli */}
+        {filtrePanelAcik && (
+          <div className="mt-2 pt-2 border-t border-[#D6DCE3] flex flex-wrap gap-2">
+            <Select value={ilFiltre} onChange={(e) => { setIlFiltre(e.target.value); setSayfa(0) }}
+              className="h-9 text-sm w-36" aria-label="İl filtresi">
+              <option value="">Tüm iller</option>
+              {TURKIYE_ILLERI.sort().map(il => <option key={il} value={il}>{il}</option>)}
+            </Select>
+            <Select value={temsilciFiltre} onChange={(e) => { setTemsilciFiltre(e.target.value); setSayfa(0) }}
+              className="h-9 text-sm w-44" aria-label="Temsilci filtresi">
+              <option value="">Tüm temsilciler</option>
+              {temsilciler.map(k => <option key={k.id} value={k.id}>{k.ad_soyad}</option>)}
+            </Select>
+            <label className="flex items-center gap-2 text-sm cursor-pointer h-9 px-2 border border-[#D6DCE3] rounded">
+              <input type="checkbox" checked={sadecHatali}
+                onChange={e => { setSadecHatali(e.target.checked); setSayfa(0) }} className="w-4 h-4" />
+              Sadece hatalı
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer h-9 px-2 border border-[#D6DCE3] rounded">
+              <input type="checkbox" checked={sadecGecikmiş}
+                onChange={e => { setSadecGecikmiş(e.target.checked); setSayfa(0) }} className="w-4 h-4" />
+              Gecikmiş
+            </label>
           </div>
         )}
+      </div>
 
-        {!isLoading && !error && filtrelenmis.length === 0 && (
-          <EmptyState
-            baslik="Proje bulunamadı"
-            aciklama={arama ? 'Arama kriterlerinizle eşleşen proje yok.' : 'Henüz proje eklenmedi. İlk projeyi ekleyerek başlayın.'}
+      {/* ── Tablo ── */}
+      <div className="flex-1 overflow-hidden">
+        {isLoading ? (
+          <div className="p-4"><TableSkeleton satirSayisi={8} sutunSayisi={8} /></div>
+        ) : error ? (
+          <div className="p-4"><HataDurumu hata={error as Error} tekrarDene={refetch} /></div>
+        ) : projeler.length === 0 ? (
+          <BosDurum
+            baslik={aramaDebounced || aktifFiltreSayisi > 0
+              ? 'Bu filtrelerle eşleşen proje yok'
+              : 'Henüz proje eklenmedi'}
+            aciklama={aramaDebounced || aktifFiltreSayisi > 0
+              ? undefined
+              : 'İlk projeyi ekleyerek başlayın.'}
             eylem={
-              rolKontrol(['yonetici', 'satis_sonrasi_sorumlusu']) && !arama ? (
-                <Button variant="primary" onClick={() => navigate('/projeler/yeni')}>
-                  + Yeni proje ekle
+              aktifFiltreSayisi > 0 ? (
+                <Button variant="outline" size="sm" onClick={filtreleriTemizle}>
+                  Filtreleri temizle
+                </Button>
+              ) : yazabilir ? (
+                <Button variant="primary" leftIcon={<Plus size={14} />}
+                  onClick={() => navigate('/projeler/yeni')}>
+                  İlk projeyi oluştur
                 </Button>
               ) : undefined
             }
           />
-        )}
-
-        {!isLoading && filtrelenmis.length > 0 && (
-          <div className="table-scroll">
-            <table className="w-full border-collapse" aria-label="Proje listesi">
+        ) : (
+          <div className="table-scroll h-full" role="region" aria-label="Proje listesi">
+            <table className="data-table w-full" aria-label={`${toplam} proje`}>
               <thead>
-                <tr className="border-b border-[#D6DCE3]">
-                  <Th onClick={() => toggleSiralama('proje_kodu')} sorted={siralama === 'proje_kodu'} yon={siralamaYon}>
-                    Kod
-                  </Th>
-                  <Th onClick={() => toggleSiralama('proje_adi')} sorted={siralama === 'proje_adi'} yon={siralamaYon}>
-                    Proje
-                  </Th>
-                  <th className="th-style text-left">Kurum</th>
-                  <th className="th-style text-left">İl</th>
-                  <th className="th-style text-center">Blok</th>
-                  <th className="th-style text-left">Saha İlerlemesi</th>
-                  <th className="th-style text-left">Durum</th>
-                  <th className="th-style text-left">Temsilci</th>
-                  <Th onClick={() => toggleSiralama('hedef_teslim_tarihi')} sorted={siralama === 'hedef_teslim_tarihi'} yon={siralamaYon}>
-                    Hedef Tarih
-                  </Th>
-                </tr>
+                {tablo.getHeaderGroups().map(hg => (
+                  <tr key={hg.id}>
+                    {hg.headers.map(header => (
+                      <th
+                        key={header.id}
+                        scope="col"
+                        style={{ width: header.getSize() }}
+                        className="px-3 py-2 text-left text-xs font-semibold text-[#6B7785] uppercase tracking-wide whitespace-nowrap border-b border-[#D6DCE3] bg-white"
+                      >
+                        {header.isPlaceholder ? null : (
+                          <button
+                            className="flex items-center gap-1 hover:text-[#0F1F33] transition-colors"
+                            onClick={header.column.getToggleSortingHandler()}
+                            aria-sort={header.column.getIsSorted() === 'asc' ? 'ascending'
+                              : header.column.getIsSorted() === 'desc' ? 'descending' : 'none'}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getIsSorted() === 'asc' ? (
+                              <ChevronUp size={12} className="text-[#B4531F]" aria-hidden />
+                            ) : header.column.getIsSorted() === 'desc' ? (
+                              <ChevronDown size={12} className="text-[#B4531F]" aria-hidden />
+                            ) : (
+                              <ChevronsUpDown size={12} className="opacity-30" aria-hidden />
+                            )}
+                          </button>
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
               </thead>
               <tbody>
-                {filtrelenmis.map((proje) => (
-                  <ProjeRow key={proje.id} proje={proje} onClick={() => navigate(`/projeler/${proje.id}`)} />
+                {tablo.getRowModel().rows.map(row => (
+                  <tr
+                    key={row.id}
+                    className="border-b border-[#D6DCE3] hover:bg-[#F5F7F9] cursor-pointer transition-colors"
+                    onClick={() => navigate(`/projeler/${row.original.id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => e.key === 'Enter' && navigate(`/projeler/${row.original.id}`)}
+                    aria-label={`${row.original.proje_kodu} — ${row.original.proje_adi}`}
+                    style={{ height: 40 }}
+                  >
+                    {row.getVisibleCells().map(cell => (
+                      <td key={cell.id} className="px-3 py-2">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -263,111 +520,37 @@ export default function Projeler() {
         )}
       </div>
 
-      <style>{`
-        .th-style {
-          padding: 8px 12px;
-          font-size: 12px;
-          font-weight: 600;
-          color: #6B7785;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          white-space: nowrap;
-        }
-      `}</style>
-    </div>
-  )
-}
-
-function Th({
-  children,
-  onClick,
-  sorted,
-  yon,
-}: {
-  children: React.ReactNode
-  onClick: () => void
-  sorted: boolean
-  yon: 'asc' | 'desc'
-}) {
-  return (
-    <th className="th-style">
-      <button
-        onClick={onClick}
-        className="flex items-center gap-1 hover:text-[#0F1F33] transition-colors"
-        aria-sort={sorted ? (yon === 'asc' ? 'ascending' : 'descending') : 'none'}
-      >
-        {children}
-        <span aria-hidden className={sorted ? 'text-[#B4531F]' : 'opacity-30'}>
-          {sorted ? (yon === 'asc' ? '↑' : '↓') : '↕'}
-        </span>
-      </button>
-    </th>
-  )
-}
-
-function ProjeRow({ proje, onClick }: { proje: Proje; onClick: () => void }) {
-  const ilerleme = sahaIlerlemeHesapla(proje.bloklar || [])
-  const hatalar = acikHataSayisi(proje.bloklar || [])
-  const gecikmiş = projeGecikmeMi(proje.hedef_teslim_tarihi, proje.durum as ProjeDurumu)
-
-  return (
-    <tr
-      className="border-b border-[#D6DCE3] hover:bg-[#F5F7F9] cursor-pointer transition-colors"
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
-      aria-label={`${proje.proje_kodu} — ${proje.proje_adi} projesine git`}
-    >
-      <td className="px-3 py-3">
-        <span
-          className="text-xs font-mono text-[#1B4B73] font-semibold"
-          style={{ fontFamily: 'IBM Plex Mono, monospace' }}
-        >
-          {proje.proje_kodu}
-        </span>
-      </td>
-      <td className="px-3 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[#0F1F33] truncate max-w-48">
-            {proje.proje_adi}
-          </span>
-          {hatalar > 0 && (
-            <Badge variant="error" className="flex-shrink-0">
-              <span aria-hidden>⚑</span> {hatalar} hata
-            </Badge>
-          )}
-          {gecikmiş && (
-            <Badge variant="warning" className="flex-shrink-0">
-              <span aria-hidden>⏰</span> Gecikmiş
-            </Badge>
-          )}
+      {/* ── Sayfalama ── */}
+      {toplam > SAYFA_BOYUTU && (
+        <div className="bg-white border-t border-[#D6DCE3] px-4 py-2.5 flex items-center justify-between flex-shrink-0">
+          <p className="text-sm text-[#6B7785] font-mono" style={{ fontFamily: 'IBM Plex Mono' }}>
+            {(sayfa * SAYFA_BOYUTU + 1).toLocaleString('tr-TR')}–
+            {Math.min((sayfa + 1) * SAYFA_BOYUTU, toplam).toLocaleString('tr-TR')}
+            {' '}/{' '}{toplam.toLocaleString('tr-TR')}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setSayfa(p => Math.max(0, p - 1))}
+              disabled={sayfa === 0}
+              className="p-2 rounded hover:bg-[#F5F7F9] disabled:opacity-30 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+              aria-label="Önceki sayfa"
+            >
+              <ChevronLeft size={16} aria-hidden />
+            </button>
+            <span className="text-sm text-[#6B7785] min-w-[80px] text-center">
+              {sayfa + 1} / {sayfaSayisi}
+            </span>
+            <button
+              onClick={() => setSayfa(p => Math.min(sayfaSayisi - 1, p + 1))}
+              disabled={sayfa >= sayfaSayisi - 1}
+              className="p-2 rounded hover:bg-[#F5F7F9] disabled:opacity-30 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+              aria-label="Sonraki sayfa"
+            >
+              <ChevronRight size={16} aria-hidden />
+            </button>
+          </div>
         </div>
-      </td>
-      <td className="px-3 py-3 text-sm text-[#6B7785] truncate max-w-36">{proje.firma?.ad || '—'}</td>
-      <td className="px-3 py-3 text-sm text-[#6B7785]">{proje.il}</td>
-      <td className="px-3 py-3 text-center font-mono text-sm" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>
-        {proje.blok_sayisi}
-      </td>
-      <td className="px-3 py-3 min-w-32">
-        <ProgressBar
-          yuzdesi={ilerleme}
-          label={`%${ilerleme} tamamlandı`}
-          showLabel={true}
-        />
-      </td>
-      <td className="px-3 py-3">
-        <ProjeDurumBadge durum={proje.durum as ProjeDurumu} />
-      </td>
-      <td className="px-3 py-3 text-sm text-[#6B7785]">{proje.satis_temsilcisi?.ad_soyad || '—'}</td>
-      <td className="px-3 py-3">
-        <span
-          className={`text-sm font-mono ${gecikmiş ? 'text-[#9A6700] font-semibold' : 'text-[#6B7785]'}`}
-          style={{ fontFamily: 'IBM Plex Mono, monospace' }}
-        >
-          {formatTarih(proje.hedef_teslim_tarihi)}
-        </span>
-      </td>
-    </tr>
+      )}
+    </div>
   )
 }
