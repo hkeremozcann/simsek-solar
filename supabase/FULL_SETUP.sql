@@ -726,7 +726,7 @@ select
   case when p.hedef_teslim_tarihi < current_date and p.durum != 'Tamamlandı' then true else false end as gecikmis_mi,
   case when p.son_hareket_tarihi < now() - interval '30 days' and p.aktif_mi then true else false end as hareketsiz_mi,
   extract(day from now() - p.son_hareket_tarihi)::int as hareketsiz_gun,
-  extract(day from current_date - p.hedef_teslim_tarihi)::int as gecikme_gun
+  (current_date - p.hedef_teslim_tarihi) as gecikme_gun
 from projeler p
 left join firmalar f on f.id = p.firma_id
 left join montaj_ekipleri me on me.id = p.montaj_sorumlusu_id
