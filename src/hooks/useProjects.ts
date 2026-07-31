@@ -341,12 +341,8 @@ export function useDeleteProject() {
         throw new Error('Proje kodu hatalı. Silme işlemi iptal edildi.')
       }
 
-      // silindi_mi=true → tüm sorgularda .eq('silindi_mi', false) filtresi dışlar
-      // FK kırılması olmaz, veriler DB'de kalır ama uygulama için tamamen görünmez
+      // manuel_durum='İptal' → proje hiçbir listede görünmez
       const { error } = await supabase.from('projeler').update({
-        silindi_mi: true,
-        silen_id: kullanici.id,
-        silme_tarihi: new Date().toISOString(),
         manuel_durum: 'İptal',
         aktif_mi: false,
       }).eq('id', id)
