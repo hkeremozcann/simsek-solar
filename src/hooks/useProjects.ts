@@ -341,9 +341,16 @@ export function useDeleteProject() {
         throw new Error('Proje kodu hatalı. Silme işlemi iptal edildi.')
       }
 
-      // Fiziksel sil — aktivite_logu.proje_id ON DELETE SET NULL ile otomatik NULL olur
-      const { error } = await supabase.from('projeler').delete().eq('id', id)
-      if (error) throw new Error(`Silme başarısız: ${error.message}. Supabase SQL Editor'da 009_fixes.sql ve FK güncellemesini çalıştırın.`)
+      // silindi_mi=true → tüm sorgularda .eq('silindi_mi', false) filtresi dışlar
+      // FK kırılması olmaz, veriler DB'de kalır ama uygulama için tamamen görünmez
+      const { error } = await supabase.from('projeler').update({
+        silindi_mi: true,
+        silen_id: kullanici.id,
+        silme_tarihi: new Date().toISOString(),
+        manuel_durum: 'İptal',
+        aktif_mi: false,
+      }).eq('id', id)
+      if (error) throw new Error(`Silme başarısız: ${error.message}`)
     },
     onSuccess: () => {
       yenileVeTemizle(queryClient)
