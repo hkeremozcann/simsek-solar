@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type {
   Proje, Blok, BlokAsamasi, AsamaDurumu, AsamaSonucu,
@@ -6,6 +6,20 @@ import type {
 } from '@/lib/types'
 import { blokAdlariUret } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
+
+// MV yenile + tüm ilgili cache'leri temizle
+async function yenileVeTemizle(queryClient: QueryClient, projeId?: string) {
+  try { await supabase.rpc('yenile_proje_ozet') } catch { /* MV yoksa pas geç */ }
+  queryClient.invalidateQueries({ queryKey: ['mv-proje-ozet'] })
+  queryClient.invalidateQueries({ queryKey: ['portfoy-stats'] })
+  queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+  queryClient.invalidateQueries({ queryKey: ['projeler'] })
+  if (projeId) {
+    queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
+    queryClient.invalidateQueries({ queryKey: ['hatalar', projeId] })
+    queryClient.invalidateQueries({ queryKey: ['tum-hatalar'] })
+  }
+}
 import { SAYFA_BOYUTU } from '@/config/firma'
 
 // ─── Projeler listesi (MV ile hızlı) ─────────────────────────
@@ -216,8 +230,7 @@ export function useCreateProject() {
       return yeniProje
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projeler'] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      yenileVeTemizle(queryClient)
     },
   })
 }
@@ -237,8 +250,7 @@ export function useUpdateProject() {
       })
     },
     onSuccess: (_data, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['proje', id] })
-      queryClient.invalidateQueries({ queryKey: ['projeler'] })
+      yenileVeTemizle(queryClient, id)
     },
   })
 }
@@ -309,9 +321,62 @@ export function useUpdateAsama() {
       })
     },
     onSuccess: (_data, { projeId }) => {
-      queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
-      queryClient.invalidateQueries({ queryKey: ['projeler'] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      yenileVeTemizle(queryClient, projeId)
+    },
+  })
+}
+
+// ─── Proje kalıcı silme (sadece Yönetici) ──────────────────────
+export function useDeleteProject() {
+  const queryClient = useQueryClient()
+  const { kullanici } = useAuth()
+
+  return useMutation({
+    mutationFn: async ({ id, onayKodu }: { id: string; onayKodu: string }) => {
+      if (!kullanici || kullanici.rol !== 'yonetici') throw new Error('Sadece yönetici silebilir.')
+
+      // Proje kodunu doğrula
+      const { data: proje } = await supabase.from('projeler').select('proje_kodu').eq('id', id).single()
+      if (!proje || proje.proje_kodu !== onayKodu) {
+        throw new Error('Proje kodu hatalı. Silme işlemi iptal edildi.')
+      }
+
+      // Fiziksel sil
+      const { error } = await supabase.from('projeler').delete().eq('id', id)
+      if (error) throw error
+
+      await supabase.from('aktivite_logu').insert({
+        kullanici_id: kullanici.id,
+        tablo: 'projeler', kayit_id: id,
+        islem: 'silme',
+        yeni_deger: `Kalıcı silindi: ${onayKodu}`,
+      })
+    },
+    onSuccess: () => {
+      yenileVeTemizle(queryClient)
+    },
+  })
+}
+
+// ─── Proje arşivleme (yumuşak silme) ──────────────────────────
+export function useArchiveProject() {
+  const queryClient = useQueryClient()
+  const { kullanici } = useAuth()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('projeler')
+        .update({ manuel_durum: 'İptal', aktif_mi: false })
+        .eq('id', id)
+      if (error) throw error
+      await supabase.from('aktivite_logu').insert({
+        kullanici_id: kullanici?.id,
+        tablo: 'projeler', kayit_id: id, proje_id: id, islem: 'guncelleme',
+        yeni_deger: 'İptal (arşivlendi)',
+      })
+    },
+    onSuccess: () => {
+      yenileVeTemizle(queryClient)
     },
   })
 }
@@ -515,4 +580,4 @@ export function useAylikBlokVerisi() {
 
 // ─── V1 uyumluluk aliasları ───────────────────────────────────
 export const useUpdateAshama = useUpdateAsama
-export const useArchiveProject = () => useUpdateProject()
+// useArchiveProject artık yukarıda tam implementasyonla tanımlı

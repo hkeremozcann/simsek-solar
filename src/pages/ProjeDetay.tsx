@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Check, X, Pencil } from 'lucide-react'
-import { useProject, useUpdateProject, useHatalar } from '@/hooks/useProjects'
+import { useProject, useUpdateProject, useHatalar, useDeleteProject, useArchiveProject } from '@/hooks/useProjects'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { BlokMatrisi as BlokMatrisiBileseni } from './BlokMatrisi'
@@ -29,7 +29,12 @@ export default function ProjeDetay() {
   const navigate = useNavigate()
   const { kullanici, rolKontrol } = useAuth()
   const [aktifSekme, setAktifSekme] = useState<Sekme>('matris')
+  const [silModal, setSilModal] = useState(false)
+  const [silOnay, setSilOnay] = useState('')
+  const [arsivModal, setArsivModal] = useState(false)
   const { data: proje, isLoading, error } = useProject(id!)
+  const deleteProject = useDeleteProject()
+  const archiveProject = useArchiveProject()
 
   if (isLoading) {
     return (
@@ -105,14 +110,24 @@ export default function ProjeDetay() {
 
           {/* Hızlı aksiyonlar */}
           {rolKontrol(['yonetici', 'satis_sonrasi_sorumlusu']) && (
-            <div className="flex gap-2 flex-shrink-0">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate(`/projeler/${proje.id}/duzenle`)}
-              >
-                ✎ Düzenle
+            <div className="flex gap-2 flex-shrink-0 flex-wrap">
+              <Button variant="outline" size="sm"
+                leftIcon={<Pencil size={13} />}
+                onClick={() => navigate(`/projeler/${proje.id}/duzenle`)}>
+                Düzenle
               </Button>
+              {proje.durum !== 'İptal' && (
+                <Button variant="outline" size="sm"
+                  onClick={() => setArsivModal(true)}>
+                  Arşivle
+                </Button>
+              )}
+              {rolKontrol(['yonetici']) && (
+                <Button variant="danger" size="sm"
+                  onClick={() => { setSilOnay(''); setSilModal(true) }}>
+                  Sil
+                </Button>
+              )}
             </div>
           )}
 
@@ -260,6 +275,70 @@ export default function ProjeDetay() {
       </div>
 
       {/* Aşama paneli BlokMatrisi bileşeni içinde yönetilir */}
+
+      {/* Arşivleme modalı */}
+      <Modal acik={arsivModal} kapat={() => setArsivModal(false)} baslik="Projeyi arşivle">
+        <div className="space-y-4">
+          <p className="text-sm text-[#6B7785]">
+            <strong>{proje.proje_kodu}</strong> projesi İptal statüsüne alınacak. Veriler silinmez, listede gizlenir. Daha sonra Düzenle'den aktif yapılabilir.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setArsivModal(false)} className="flex-1">İptal</Button>
+            <Button variant="danger"
+              loading={archiveProject.isPending}
+              onClick={async () => {
+                await archiveProject.mutateAsync(proje.id)
+                setArsivModal(false)
+                navigate('/projeler')
+              }} className="flex-1">
+              Arşivle
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Kalıcı silme modalı — proje kodu onayı */}
+      <Modal acik={silModal} kapat={() => setSilModal(false)} baslik="Projeyi kalıcı sil">
+        <div className="space-y-4">
+          <div className="bg-[#B3261E]/10 border border-[#B3261E]/30 rounded p-3">
+            <p className="text-sm font-semibold text-[#B3261E]">Bu işlem geri alınamaz.</p>
+            <p className="text-xs text-[#B3261E] mt-1">
+              Proje ve tüm blok/aşama/hata/rapor verileri kalıcı olarak silinir.
+            </p>
+          </div>
+          <FormField label={`Onaylamak için proje kodunu yazın: ${proje.proje_kodu}`} required>
+            {(fieldId) => (
+              <input
+                id={fieldId}
+                type="text"
+                value={silOnay}
+                onChange={e => setSilOnay(e.target.value)}
+                placeholder={proje.proje_kodu}
+                className="w-full px-3 py-2 border border-[#D6DCE3] rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#B3261E]"
+                style={{ fontFamily: 'IBM Plex Mono' }}
+              />
+            )}
+          </FormField>
+          {deleteProject.error && (
+            <p className="text-sm text-[#B3261E]" role="alert">
+              {(deleteProject.error as Error).message}
+            </p>
+          )}
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setSilModal(false)} className="flex-1">İptal</Button>
+            <Button variant="danger"
+              disabled={silOnay !== proje.proje_kodu}
+              loading={deleteProject.isPending}
+              onClick={async () => {
+                await deleteProject.mutateAsync({ id: proje.id, onayKodu: silOnay })
+                setSilModal(false)
+                navigate('/projeler')
+              }} className="flex-1">
+              Kalıcı olarak sil
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
