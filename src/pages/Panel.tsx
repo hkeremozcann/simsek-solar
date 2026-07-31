@@ -24,7 +24,7 @@ import type { MvProjeOzet } from '@/lib/types'
 function usePortfoyStats() {
   return useQuery({
     queryKey: ['portfoy-stats'],
-    staleTime: 1000 * 60 * 2,
+    staleTime: 0, // Her ziyarette taze veri
     queryFn: async () => {
       const { data: projeler } = await supabase
         .from('mv_proje_ozet').select('*')
@@ -87,7 +87,8 @@ function usePortfoyStats() {
         uygulama: { toplam: 0, tamamlanan: 0 },
       };
       (dokumanlar || []).forEach(d => {
-        const tamamlandi = d.durum === 'Tamamlandı' || d.durum === 'Onaylandı' || d.durum === 'Müşteriye Gönderildi'
+        // Eski ve yeni DB değerlerinin tamamını kapsıyoruz
+        const tamamlandi = ['Tamamlandı', 'Onaylandı', 'Müşteriye Gönderildi'].includes(d.durum)
         if (d.dokuman_tipi === 'Kaide Projesi') {
           dokumanStats.kaide.toplam++
           if (tamamlandi) dokumanStats.kaide.tamamlanan++

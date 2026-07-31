@@ -706,7 +706,9 @@ function ProjeDestek({
       }
     }
 
+    // Dashboard istatistiklerini de yenile
     await queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
+    await queryClient.invalidateQueries({ queryKey: ['portfoy-stats'] })
     setYukleniyor(null)
   }
 
