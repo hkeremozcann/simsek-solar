@@ -9,7 +9,7 @@ import {
   Table2, AlertCircle, Clock, ChevronUp, ChevronDown,
   ChevronsUpDown, ChevronLeft, ChevronRight
 } from 'lucide-react'
-import { useProjects, useKullanicilar } from '@/hooks/useProjects'
+import { useMvProjeOzet, useKullanicilar } from '@/hooks/useProjects'
 import { useAuth } from '@/contexts/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -17,8 +17,7 @@ import { ProjeDurumBadge, Badge } from '@/components/ui/Badge'
 import { TableSkeleton, HataDurumu, BosDurum } from '@/components/common/QueryState'
 import { Input, Select } from '@/components/ui/FormField'
 import { formatTarih, formatGoreceli, exportCSV, debounce } from '@/lib/utils'
-import { TURKIYE_ILLERI, KURUM_TIPLERI, type ProjeDurumu } from '@/lib/types'
-import type { Proje } from '@/lib/types'
+import { TURKIYE_ILLERI, type ProjeDurumu, type MvProjeOzet } from '@/lib/types'
 import { SAYFA_BOYUTU } from '@/config/firma'
 
 type GorunumTipi = 'normal' | 'excel'
@@ -51,17 +50,33 @@ export default function Projeler() {
     aramaGuncelle(val)
   }
 
-  const { data: projeData, isLoading, error, refetch } = useProjects({
+  // MV'den veri çek — saha_yuzdesi, dizilim_tamamlanan vb. hesaplanmış alanlar burada
+  const { data: tumProjeler = [], isLoading, error, refetch } = useMvProjeOzet({
     durum: durumFiltre || undefined,
     il: ilFiltre || undefined,
     satis_temsilcisi_id: temsilciFiltre || undefined,
-    arama: aramaDebounced || undefined,
-    sayfa,
   })
 
-  const projeler = projeData?.projeler ?? []
-  const toplam = projeData?.toplam ?? 0
+  // İstemci tarafı arama ve filtre (MV sunucu tarafı filtre desteklemez)
+  const projeler = useMemo(() => {
+    let liste = tumProjeler
+    if (aramaDebounced) {
+      const q = aramaDebounced.toLowerCase()
+      liste = liste.filter(p =>
+        p.proje_kodu?.toLowerCase().includes(q) ||
+        p.proje_adi?.toLowerCase().includes(q) ||
+        p.firma_adi?.toLowerCase().includes(q) ||
+        p.il?.toLowerCase().includes(q)
+      )
+    }
+    if (sadecHatali) liste = liste.filter(p => p.acik_hata > 0)
+    if (sadecGecikmiş) liste = liste.filter(p => p.gecikmis_mi)
+    return liste
+  }, [tumProjeler, aramaDebounced, sadecHatali, sadecGecikmiş])
+
+  const toplam = projeler.length
   const sayfaSayisi = Math.ceil(toplam / SAYFA_BOYUTU)
+  const sayfaProjeler = projeler.slice(sayfa * SAYFA_BOYUTU, (sayfa + 1) * SAYFA_BOYUTU)
 
   const { data: kullanicilar = [] } = useKullanicilar()
   const temsilciler = kullanicilar.filter(k =>
@@ -80,8 +95,8 @@ export default function Projeler() {
   }
 
   // TanStack Table kolonları
-  const kolonlar = useMemo<ColumnDef<Proje>[]>(() => {
-    const temel: ColumnDef<Proje>[] = [
+  const kolonlar = useMemo<ColumnDef<MvProjeOzet>[]>(() => {
+    const temel: ColumnDef<MvProjeOzet>[] = [
       {
         id: 'proje_kodu',
         accessorKey: 'proje_kodu',
@@ -96,7 +111,7 @@ export default function Projeler() {
       },
       {
         id: 'firma',
-        accessorFn: (r) => r.firma?.ad,
+        accessorFn: (r) => r.firma_adi,
         header: 'Firma',
         size: 160,
         cell: ({ getValue }) => (
@@ -157,7 +172,7 @@ export default function Projeler() {
       },
       {
         id: 'saha_yuzdesi',
-        accessorFn: (r) => (r as { saha_yuzdesi?: number }).saha_yuzdesi ?? 0,
+        accessorFn: (r) => r.saha_yuzdesi ?? 0,
         header: 'Saha %',
         size: 90,
         cell: ({ getValue }) => {
@@ -182,7 +197,7 @@ export default function Projeler() {
       },
       {
         id: 'acik_hata',
-        accessorFn: (r) => (r as { acik_hata?: number }).acik_hata ?? 0,
+        accessorFn: (r) => r.acik_hata ?? 0,
         header: 'Hata',
         size: 70,
         cell: ({ getValue }) => {
@@ -208,7 +223,7 @@ export default function Projeler() {
       },
       {
         id: 'satis_temsilcisi',
-        accessorFn: (r) => r.satis_temsilcisi?.ad_soyad,
+        accessorFn: (r) => r.satis_temsilcisi_adi,
         header: 'Temsilci',
         size: 120,
         cell: ({ getValue }) => (
@@ -221,28 +236,28 @@ export default function Projeler() {
         header: 'Dizilim',
         size: 76,
         accessorKey: 'id',
-        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Panel Dizilim Montajı" alanAdi="dizilim_tamamlanan" />,
+        cell: ({ row }) => <AsamaHucresi proje={row.original as MvProjeOzet} kapsam="Panel Dizilim Montajı" alanAdi="dizilim_tamamlanan" />,
       },
       {
         id: 'asama_borulama',
         header: 'Borulama',
         size: 76,
         accessorKey: 'proje_kodu',
-        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Borulama Montajı" alanAdi="borulama_tamamlanan" />,
+        cell: ({ row }) => <AsamaHucresi proje={row.original as MvProjeOzet} kapsam="Borulama Montajı" alanAdi="borulama_tamamlanan" />,
       },
       {
         id: 'asama_pano',
         header: 'Pano',
         size: 76,
         accessorKey: 'proje_adi',
-        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Pano Montajı" alanAdi="pano_tamamlanan" />,
+        cell: ({ row }) => <AsamaHucresi proje={row.original as MvProjeOzet} kapsam="Pano Montajı" alanAdi="pano_tamamlanan" />,
       },
       {
         id: 'asama_devre',
         header: 'Devreye',
         size: 76,
         accessorKey: 'firma_id',
-        cell: ({ row }) => <AsamaHucresi proje={row.original} kapsam="Devreye Alma" alanAdi="devreye_alinan_blok" />,
+        cell: ({ row }) => <AsamaHucresi proje={row.original as MvProjeOzet} kapsam="Devreye Alma" alanAdi="devreye_alinan_blok" />,
       },
       {
         id: 'son_hareket_tarihi',
@@ -304,8 +319,8 @@ export default function Projeler() {
   }, [gorunum])
 
   const tablo = useReactTable({
-    data: projeler,
-    columns: kolonlar,
+    data: sayfaProjeler,
+    columns: kolonlar as ColumnDef<MvProjeOzet>[],
     state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
@@ -329,7 +344,7 @@ export default function Projeler() {
       String((p as { saha_yuzdesi?: number }).saha_yuzdesi ?? 0),
       String((p as { acik_hata?: number }).acik_hata ?? 0),
       p.durum,
-      p.satis_temsilcisi?.ad_soyad || '',
+      p.satis_temsilcisi_adi || '',
       formatTarih(p.son_hareket_tarihi),
     ])
     exportCSV([basliklar, ...satirlar], `projeler-${new Date().toISOString().split('T')[0]}.csv`)
@@ -587,14 +602,12 @@ export default function Projeler() {
 
 // ─── Aşama hücresi bileşeni ───────────────────────────────────
 function AsamaHucresi({ proje, kapsam, alanAdi }: {
-  proje: Proje; kapsam: string; alanAdi: string
+  proje: MvProjeOzet; kapsam: string; alanAdi: keyof MvProjeOzet
 }) {
-  const p = proje as unknown as Record<string, unknown>
-  const montajKapsami = p['montaj_kapsami'] as string[] | undefined
-  if (!montajKapsami?.includes(kapsam)) {
+  if (!proje.montaj_kapsami?.includes(kapsam)) {
     return <span className="text-xs text-[#D6DCE3] text-center block">—</span>
   }
-  const tamamlanan = (p[alanAdi] as number) ?? 0
+  const tamamlanan = (proje[alanAdi] as number) ?? 0
   const toplam = proje.blok_sayisi || 0
   const pct = toplam > 0 ? Math.floor((tamamlanan / toplam) * 100) : 0
   return (

@@ -197,7 +197,7 @@ export interface MvProjeOzet {
   son_hareket_tarihi?: string; satis_temsilcisi_id: string
   firma_id: string; montaj_sorumlusu_id?: string; bedelsiz_mi: boolean; taslak_mi: boolean
   montaj_kapsami?: string[]
-  kurum_tipi?: KurumTipi; firma_adi?: string; montaj_ekibi_adi?: string
+  kurum_tipi?: KurumTipi; firma_adi?: string; montaj_ekibi_adi?: string; satis_temsilcisi_adi?: string
   toplam_blok: number; tamamlanan_asama: number; toplam_asama: number
   saha_yuzdesi: number; devreye_alinan_blok: number; acik_hata: number; sevk_yuzdesi: number
   kaide_tamamlanan?: number; dizilim_tamamlanan?: number
