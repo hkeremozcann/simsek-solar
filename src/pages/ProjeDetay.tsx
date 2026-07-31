@@ -707,18 +707,35 @@ function ProjeDestek({
               <p className="text-xs text-[#6B7785] mb-2">Durum</p>
               <div className="grid grid-cols-2 gap-1.5">
                 {DOKUMAN_DURUMLAR.map(({ deger, renk, aktif }) => {
-                  const secili = (dok.durum as string) === deger
+                  // Eski DB değerleriyle de eşle (007 migrasyonu çalışmamış olabilir)
+                  const eskiEsleme: Record<string, string> = {
+                    'Başlamadı': 'Dosya Bekleniyor',
+                    'Hazırlanıyor': 'Çiziliyor',
+                    'Müşteriye Gönderildi': 'Tamamlandı',
+                    'Onaylandı': 'Tamamlandı',
+                    'Revizyon İstendi': 'İptal Edildi',
+                  }
+                  const normalDurum = eskiEsleme[dok.durum] || dok.durum
+                  const secili = normalDurum === deger
+                  const yukleniyorMu = yukleniyor === dok.id
                   return (
                     <button
                       key={deger}
-                      onClick={() => yazabilir && !secili && durumGuncelle(dok.id, deger)}
-                      disabled={!yazabilir || yukleniyor === dok.id}
+                      type="button"
+                      onClick={async () => {
+                        if (!secili && !yukleniyorMu) {
+                          await durumGuncelle(dok.id, deger)
+                        }
+                      }}
                       className={cn(
-                        'px-2 py-2 rounded border text-xs font-medium transition-colors text-left min-h-[40px]',
+                        'px-2 py-2 rounded border text-xs font-medium transition-all text-left min-h-[44px] select-none',
                         secili ? aktif : renk,
-                        yazabilir && !secili ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'
+                        !secili && !yukleniyorMu
+                          ? 'hover:brightness-95 cursor-pointer active:scale-95'
+                          : secili ? 'cursor-default' : 'cursor-wait opacity-60'
                       )}
                       aria-pressed={secili}
+                      aria-busy={yukleniyorMu}
                     >
                       {secili && <Check size={10} className="inline mr-1" aria-hidden />}
                       {deger}

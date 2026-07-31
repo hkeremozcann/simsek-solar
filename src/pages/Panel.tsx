@@ -76,6 +76,30 @@ function usePortfoyStats() {
       const acikHata = tumProjeler.reduce((s, p) => s + (p.acik_hata || 0), 0)
       const hataliPrjSay = tumProjeler.filter(p => p.acik_hata > 0).length
 
+      // Doküman istatistikleri (Proje Çizimi kutusu için)
+      const { data: dokumanlar } = await supabase
+        .from('proje_dokumanlari')
+        .select('dokuman_tipi, durum')
+
+      const dokumanStats = {
+        kaide:    { toplam: 0, tamamlanan: 0 },
+        borulama: { toplam: 0, tamamlanan: 0 },
+        uygulama: { toplam: 0, tamamlanan: 0 },
+      };
+      (dokumanlar || []).forEach(d => {
+        const tamamlandi = d.durum === 'Tamamlandı' || d.durum === 'Onaylandı' || d.durum === 'Müşteriye Gönderildi'
+        if (d.dokuman_tipi === 'Kaide Projesi') {
+          dokumanStats.kaide.toplam++
+          if (tamamlandi) dokumanStats.kaide.tamamlanan++
+        } else if (d.dokuman_tipi === 'Borulama Projesi') {
+          dokumanStats.borulama.toplam++
+          if (tamamlandi) dokumanStats.borulama.tamamlanan++
+        } else if (d.dokuman_tipi === 'Uygulama Projesi') {
+          dokumanStats.uygulama.toplam++
+          if (tamamlandi) dokumanStats.uygulama.tamamlanan++
+        }
+      })
+
       return {
         toplamBlok,
         toplamKollektor,
@@ -105,6 +129,7 @@ function usePortfoyStats() {
         },
         cizim: {
           kapsamPrj: cizimKapsam.length,
+          dokumanStats,
         },
         acikHata,
         hataliPrjSay,
@@ -169,14 +194,10 @@ export default function Panel() {
                 tikla={() => navigate('/projeler?durum=Çalışıyor')}
               />
 
-              {/* Proje Çizimi */}
-              <TakipKutusu
-                baslik="Proje Çizimi"
-                Ikon={FileText}
-                renk="#6B7785"
-                projeAdet={stats?.cizim.kapsamPrj ?? 0}
-                toplamProje={stats?.toplamProje ?? 0}
-                serit="proje desteği kapsamında"
+              {/* Proje Çizimi — doküman bazlı */}
+              <ProjecizimiKutusu
+                kapsamPrj={stats?.cizim.kapsamPrj ?? 0}
+                dokumanStats={stats?.cizim.dokumanStats}
                 tikla={() => navigate('/projeler?kapsam=Proje+Desteği')}
               />
 
@@ -444,6 +465,62 @@ export default function Panel() {
 }
 
 // ─── Takip kutusu (Aktif / Çizim / Hatalı) ───────────────────
+// ─── Proje Çizimi kutusu (doküman istatistikleri) ─────────────
+interface DokumanStat { toplam: number; tamamlanan: number }
+
+function ProjecizimiKutusu({ kapsamPrj, dokumanStats, tikla }: {
+  kapsamPrj: number
+  dokumanStats?: { kaide: DokumanStat; borulama: DokumanStat; uygulama: DokumanStat }
+  tikla?: () => void
+}) {
+  const satirlar = [
+    { ad: 'Kaide', stat: dokumanStats?.kaide },
+    { ad: 'Borulama', stat: dokumanStats?.borulama },
+    { ad: 'Uygulama', stat: dokumanStats?.uygulama },
+  ]
+  const toplamToplam = (dokumanStats?.kaide.toplam ?? 0) + (dokumanStats?.borulama.toplam ?? 0) + (dokumanStats?.uygulama.toplam ?? 0)
+  const toplamTamamlanan = (dokumanStats?.kaide.tamamlanan ?? 0) + (dokumanStats?.borulama.tamamlanan ?? 0) + (dokumanStats?.uygulama.tamamlanan ?? 0)
+  const genelPct = toplamToplam > 0 ? Math.floor((toplamTamamlanan / toplamToplam) * 100) : 0
+
+  const Tag = tikla ? 'button' : 'div'
+  return (
+    <Tag onClick={tikla}
+      className={`bg-white border border-[#D6DCE3] rounded p-2.5 text-left w-full ${tikla ? 'hover:border-[#1B4B73]/40 cursor-pointer' : ''}`}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <FileText size={13} className="text-[#6B7785]" aria-hidden />
+        <span className="text-xs text-[#6B7785] font-medium">Proje Çizimi</span>
+      </div>
+      <p className="text-2xl font-bold text-[#0F1F33] tabular leading-none"
+        style={{ fontFamily: 'IBM Plex Mono' }}>{kapsamPrj}</p>
+      <p className="text-xs font-mono mt-0.5 text-[#6B7785]"
+        style={{ fontFamily: 'IBM Plex Mono' }}>%{genelPct}</p>
+      {/* Doküman satırları */}
+      <div className="mt-1.5 pt-1.5 border-t border-[#D6DCE3] space-y-1">
+        {satirlar.map(({ ad, stat }) => {
+          const t = stat?.toplam ?? 0
+          const tam = stat?.tamamlanan ?? 0
+          const pct = t > 0 ? Math.floor((tam / t) * 100) : 0
+          return (
+            <div key={ad}>
+              <div className="flex justify-between text-[10px] text-[#6B7785] mb-0.5">
+                <span>{ad}</span>
+                <span className="font-mono" style={{ fontFamily: 'IBM Plex Mono' }}>
+                  {tam}/{t} · %{pct}
+                </span>
+              </div>
+              <div className="h-1 bg-[#D6DCE3] rounded-full overflow-hidden">
+                <div className="h-full rounded-full"
+                  style={{ width: `${pct}%`, backgroundColor: pct === 100 ? '#1B7A4B' : '#6B7785' }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Tag>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 function TakipKutusu({ baslik, Ikon, renk, projeAdet, toplamProje, serit, tikla, uyari }: {
   baslik: string; Ikon: React.ElementType; renk: string
   projeAdet: number; toplamProje: number; serit: string
