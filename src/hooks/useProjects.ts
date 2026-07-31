@@ -443,11 +443,23 @@ export function useEksikImalatlar(projeId?: string) {
   return useQuery({
     queryKey: ['eksik-imalatlar', projeId],
     queryFn: async () => {
-      let q = supabase.from('eksik_imalatlar').select('*')
+      if (!projeId) {
+        // Genel liste: sadece aktif projelerin imalatlarını getir
+        const { data: aktifPrjler } = await supabase
+          .from('projeler').select('id').neq('durum', 'İptal').eq('silindi_mi', false)
+        const aktifIds = (aktifPrjler ?? []).map(p => p.id)
+        if (aktifIds.length === 0) return []
+        const { data, error } = await supabase.from('eksik_imalatlar').select('*')
+          .in('proje_id', aktifIds)
+          .order('engelleyici_mi', { ascending: false })
+          .order('olusturma_tarihi', { ascending: false })
+        if (error) throw error
+        return (data ?? []) as EksikImalat[]
+      }
+      const { data, error } = await supabase.from('eksik_imalatlar').select('*')
+        .eq('proje_id', projeId)
         .order('engelleyici_mi', { ascending: false })
         .order('olusturma_tarihi', { ascending: false })
-      if (projeId) q = q.eq('proje_id', projeId)
-      const { data, error } = await q
       if (error) throw error
       return (data ?? []) as EksikImalat[]
     },
@@ -463,8 +475,13 @@ export function useDashboardStats() {
       const [aktif, tamamlanan, acikHata, sureciHata, gecikmisPrj] = await Promise.all([
         supabase.from('projeler').select('id', { count: 'exact', head: true }).eq('aktif_mi', true).eq('silindi_mi', false),
         supabase.from('projeler').select('id', { count: 'exact', head: true }).eq('durum', 'Tamamlandı'),
-        supabase.from('hatalar').select('id', { count: 'exact', head: true }).in('durum', ['Açık', 'Düzeltiliyor', 'Yeniden Kontrolde']),
-        supabase.from('hatalar').select('id', { count: 'exact', head: true }).in('durum', ['Açık', 'Düzeltiliyor']).lt('son_tarih', new Date().toISOString()),
+        // Hata sorgularında İptal projeleri hariç tut
+        supabase.from('hatalar').select('id, proje:projeler!inner(durum, silindi_mi)', { count: 'exact', head: true })
+          .in('durum', ['Açık', 'Düzeltiliyor', 'Yeniden Kontrolde'])
+          .neq('projeler.durum', 'İptal').eq('projeler.silindi_mi', false),
+        supabase.from('hatalar').select('id, proje:projeler!inner(durum, silindi_mi)', { count: 'exact', head: true })
+          .in('durum', ['Açık', 'Düzeltiliyor']).lt('son_tarih', new Date().toISOString())
+          .neq('projeler.durum', 'İptal').eq('projeler.silindi_mi', false),
         supabase.from('projeler').select('id', { count: 'exact', head: true }).lt('hedef_teslim_tarihi', new Date().toISOString().split('T')[0]).eq('aktif_mi', true),
       ])
 

@@ -27,12 +27,23 @@ export default function HatalarListesi() {
   const { data: hatalar = [], isLoading, error, refetch } = useQuery({
     queryKey: ['tum-hatalar', durumFiltre, siddetFiltre],
     queryFn: async () => {
+      // Önce aktif projeleri al
+      const { data: aktifPrjler } = await supabase
+        .from('projeler')
+        .select('id')
+        .neq('durum', 'İptal')
+        .eq('silindi_mi', false)
+      const aktifIds = (aktifPrjler ?? []).map(p => p.id)
+      if (aktifIds.length === 0) return []
+
       let q = supabase.from('hatalar').select(`
         *,
         tespit_eden:kullanicilar!tespit_eden_id(id, ad_soyad),
         atanan:kullanicilar!atanan_id(id, ad_soyad),
         proje:projeler!proje_id(proje_kodu, proje_adi)
-      `).order('tespit_tarihi', { ascending: false })
+      `)
+        .in('proje_id', aktifIds)
+        .order('tespit_tarihi', { ascending: false })
 
       if (durumFiltre) q = q.eq('durum', durumFiltre)
       if (siddetFiltre) q = q.eq('siddet', siddetFiltre)

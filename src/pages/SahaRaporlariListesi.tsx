@@ -17,11 +17,19 @@ export default function SahaRaporlariListesi() {
   const { data: raporlar = [], isLoading, error, refetch } = useQuery({
     queryKey: ['tum-saha-raporlari', tipFiltre],
     queryFn: async () => {
+      const { data: aktifPrjler } = await supabase
+        .from('projeler').select('id')
+        .neq('durum', 'İptal').eq('silindi_mi', false)
+      const aktifIds = (aktifPrjler ?? []).map(p => p.id)
+      if (aktifIds.length === 0) return []
+
       let q = supabase.from('saha_raporlari').select(`
         *,
         hazirlayan:kullanicilar!hazirlayan_id(id, ad_soyad),
         proje:projeler!proje_id(proje_kodu, proje_adi, il)
-      `).order('rapor_tarihi', { ascending: false })
+      `)
+        .in('proje_id', aktifIds)
+        .order('rapor_tarihi', { ascending: false })
 
       if (tipFiltre) q = q.eq('rapor_tipi', tipFiltre)
 
