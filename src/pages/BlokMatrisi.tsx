@@ -5,10 +5,12 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import {
-  Check, X, Circle, Loader2, ChevronRight,
-  Camera, Clock, AlertCircle, Info
+  Check, X, Circle, Loader2,
+  AlertCircle, Info, Pencil
 } from 'lucide-react'
 import { useUpdateAsama } from '@/hooks/useProjects'
+import { useQueryClient } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -188,10 +190,15 @@ export function BlokMatrisi({ bloklar, projeId, yazabilir, yonetici }: BlokMatri
                     />
                   )}
                 </td>
-                {/* Blok adı */}
+                {/* Blok adı — düzenlenebilir */}
                 <th scope="row"
-                  className="px-3 py-2 text-sm font-semibold text-[#0F1F33] text-left sticky left-10 bg-inherit z-10 whitespace-nowrap">
-                  {blok.blok_adi}
+                  className="px-3 py-2 text-sm font-semibold text-[#0F1F33] text-left sticky left-10 bg-inherit z-10">
+                  <BlokAdiDuzenle
+                    blokId={blok.id}
+                    projeId={projeId}
+                    mevcutAd={blok.blok_adi}
+                    yazabilir={yazabilir}
+                  />
                 </th>
                 {/* Aşama hücreleri */}
                 {ASAMA_SIRALAMA.map((tip, ai) => {
@@ -607,5 +614,78 @@ function TopluIslemModal({
         </div>
       </div>
     </Modal>
+  )
+}
+
+// ─── Blok adı düzenleme bileşeni ─────────────────────────────
+function BlokAdiDuzenle({
+  blokId, projeId, mevcutAd, yazabilir,
+}: {
+  blokId: string; projeId: string; mevcutAd: string; yazabilir: boolean
+}) {
+  const queryClient = useQueryClient()
+  const [duzenleMode, setDuzenleMode] = useState(false)
+  const [deger, setDeger] = useState(mevcutAd)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setDeger(mevcutAd) }, [mevcutAd])
+
+  useEffect(() => {
+    if (duzenleMode) inputRef.current?.focus()
+  }, [duzenleMode])
+
+  async function kaydet() {
+    const temiz = deger.trim()
+    if (!temiz || temiz === mevcutAd) { setDuzenleMode(false); setDeger(mevcutAd); return }
+    setYukleniyor(true)
+    await supabase.from('bloklar').update({ blok_adi: temiz }).eq('id', blokId)
+    queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
+    setYukleniyor(false)
+    setDuzenleMode(false)
+  }
+
+  function iptal() { setDeger(mevcutAd); setDuzenleMode(false) }
+
+  if (duzenleMode) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          ref={inputRef}
+          type="text"
+          value={deger}
+          onChange={e => setDeger(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') kaydet(); if (e.key === 'Escape') iptal() }}
+          className="w-28 px-1.5 py-1 text-sm border border-[#B4531F] rounded focus:outline-none font-semibold"
+          aria-label="Blok adını düzenle"
+          maxLength={20}
+        />
+        <button onClick={kaydet} disabled={yukleniyor}
+          className="p-1 text-[#1B7A4B] hover:bg-[#1B7A4B]/10 rounded min-w-[28px] min-h-[28px] flex items-center justify-center"
+          aria-label="Kaydet">
+          {yukleniyor ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+        </button>
+        <button onClick={iptal}
+          className="p-1 text-[#B3261E] hover:bg-[#B3261E]/10 rounded min-w-[28px] min-h-[28px] flex items-center justify-center"
+          aria-label="İptal">
+          <X size={12} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1 group whitespace-nowrap">
+      <span>{mevcutAd}</span>
+      {yazabilir && (
+        <button
+          onClick={() => setDuzenleMode(true)}
+          className="p-1 text-[#D6DCE3] hover:text-[#6B7785] opacity-0 group-hover:opacity-100 transition-opacity rounded min-w-[24px] min-h-[24px] flex items-center justify-center"
+          aria-label={`${mevcutAd} adını düzenle`}
+        >
+          <Pencil size={11} aria-hidden />
+        </button>
+      )}
+    </div>
   )
 }

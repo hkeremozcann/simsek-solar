@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useProject } from '@/hooks/useProjects'
+import { Check, X, Pencil } from 'lucide-react'
+import { useProject, useUpdateProject } from '@/hooks/useProjects'
+import { useQueryClient } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { BlokMatrisi as BlokMatrisiBileseni } from './BlokMatrisi'
 import { useAuth } from '@/contexts/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -653,6 +656,15 @@ function AsamaPanel({
 }
 
 // ─── Proje Desteği Sekmesi ────────────────────────────────────
+const DOKUMAN_DURUMLAR = [
+  { deger: 'Dosya Bekleniyor', renk: 'bg-[#F5F7F9] border-[#D6DCE3] text-[#6B7785]', aktif: 'bg-[#9A6700]/10 border-[#9A6700] text-[#9A6700]' },
+  { deger: 'Çiziliyor',        renk: 'bg-[#F5F7F9] border-[#D6DCE3] text-[#6B7785]', aktif: 'bg-[#1B4B73]/10 border-[#1B4B73] text-[#1B4B73]' },
+  { deger: 'Tamamlandı',       renk: 'bg-[#F5F7F9] border-[#D6DCE3] text-[#6B7785]', aktif: 'bg-[#1B7A4B]/10 border-[#1B7A4B] text-[#1B7A4B]' },
+  { deger: 'İptal Edildi',     renk: 'bg-[#F5F7F9] border-[#D6DCE3] text-[#6B7785]', aktif: 'bg-[#B3261E]/10 border-[#B3261E] text-[#B3261E]' },
+] as const
+
+type DokumanDurumu = typeof DOKUMAN_DURUMLAR[number]['deger']
+
 function ProjeDestek({
   dokumanlari,
   projeId,
@@ -662,6 +674,19 @@ function ProjeDestek({
   projeId: string
   yazabilir: boolean
 }) {
+  const queryClient = useQueryClient()
+  const [yukleniyor, setYukleniyor] = useState<string | null>(null)
+  const [aciklamalar, setAciklamalar] = useState<Record<string, string>>({})
+
+  async function durumGuncelle(dokumanId: string, yeniDurum: DokumanDurumu, aciklama?: string) {
+    setYukleniyor(dokumanId)
+    await supabase.from('proje_dokumanlari')
+      .update({ durum: yeniDurum, aciklama: aciklama || null })
+      .eq('id', dokumanId)
+    queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
+    setYukleniyor(null)
+  }
+
   if (!dokumanlari || dokumanlari.length === 0) {
     return (
       <EmptyState
@@ -676,28 +701,61 @@ function ProjeDestek({
       {dokumanlari.map((dok) => (
         <Card key={dok.id}>
           <CardHeader title={dok.dokuman_tipi} />
-          <div className="space-y-2">
-            <div>
-              <span className="text-xs text-[#6B7785]">Durum</span>
-              <p className="text-sm font-medium mt-0.5">{dok.durum}</p>
+          <div className="space-y-3">
+            {/* Durum butonları */}
+            <div role="group" aria-label={`${dok.dokuman_tipi} durumu`}>
+              <p className="text-xs text-[#6B7785] mb-2">Durum</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {DOKUMAN_DURUMLAR.map(({ deger, renk, aktif }) => {
+                  const secili = (dok.durum as string) === deger
+                  return (
+                    <button
+                      key={deger}
+                      onClick={() => yazabilir && !secili && durumGuncelle(dok.id, deger)}
+                      disabled={!yazabilir || yukleniyor === dok.id}
+                      className={cn(
+                        'px-2 py-2 rounded border text-xs font-medium transition-colors text-left min-h-[40px]',
+                        secili ? aktif : renk,
+                        yazabilir && !secili ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'
+                      )}
+                      aria-pressed={secili}
+                    >
+                      {secili && <Check size={10} className="inline mr-1" aria-hidden />}
+                      {deger}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            {dok.revizyon_no && (
-              <div>
-                <span className="text-xs text-[#6B7785]">Revizyon</span>
-                <p className="text-sm font-mono">{dok.revizyon_no}</p>
-              </div>
-            )}
+
+            {/* Açıklama */}
+            <div>
+              <p className="text-xs text-[#6B7785] mb-1">Açıklama / Not</p>
+              {yazabilir ? (
+                <div className="flex gap-1">
+                  <textarea
+                    value={aciklamalar[dok.id] ?? dok.aciklama ?? ''}
+                    onChange={e => setAciklamalar(prev => ({ ...prev, [dok.id]: e.target.value }))}
+                    onBlur={e => {
+                      const val = e.target.value
+                      if (val !== (dok.aciklama ?? '')) {
+                        durumGuncelle(dok.id, dok.durum as DokumanDurumu, val)
+                      }
+                    }}
+                    className="w-full text-sm px-2 py-1.5 border border-[#D6DCE3] rounded resize-none focus:outline-none focus:ring-2 focus:ring-[#B4531F] focus:border-transparent"
+                    rows={2}
+                    placeholder="Notlarınızı buraya ekleyin…"
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-[#6B7785]">{dok.aciklama || '—'}</p>
+              )}
+            </div>
+
             {dok.gonderim_tarihi && (
-              <div>
-                <span className="text-xs text-[#6B7785]">Gönderim</span>
-                <p className="text-sm">{formatTarih(dok.gonderim_tarihi)}</p>
-              </div>
-            )}
-            {dok.onay_tarihi && (
-              <div>
-                <span className="text-xs text-[#6B7785]">Onay tarihi</span>
-                <p className="text-sm">{formatTarih(dok.onay_tarihi)}</p>
-              </div>
+              <p className="text-xs text-[#6B7785]">
+                Gönderim: <span className="font-mono">{formatTarih(dok.gonderim_tarihi)}</span>
+              </p>
             )}
           </div>
         </Card>
@@ -707,45 +765,164 @@ function ProjeDestek({
 }
 
 // ─── Saha Raporları Sekmesi ──────────────────────────────────
+const RAPOR_TIPLERI = [
+  'İlk Keşif','Ara Kontrol','Kaide Kontrol','Montaj Kontrol',
+  'Devreye Alma','Arıza/Servis','Kesin Teslim',
+] as const
+
 function SahaRaporlariSekme({ raporlar, projeId, yazabilir }: {
   raporlar: SahaRaporu[]
   projeId: string
   yazabilir: boolean
 }) {
-  const navigate = useNavigate()
+  const { kullanici } = useAuth()
+  const queryClient = useQueryClient()
+  const [modalAcik, setModalAcik] = useState(false)
+  const [rapTipi, setRapTipi] = useState<string>('Ara Kontrol')
+  const [ozet, setOzet] = useState('')
+  const [tespitler, setTespitler] = useState('')
+  const [yapilanlar, setYapilanlar] = useState('')
+  const [sonrakiAdim, setSonrakiAdim] = useState('')
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [hata, setHata] = useState('')
+
+  function modalAc() {
+    setRapTipi('Ara Kontrol'); setOzet(''); setTespitler('')
+    setYapilanlar(''); setSonrakiAdim(''); setHata('')
+    setModalAcik(true)
+  }
+
+  async function kaydet() {
+    if (!ozet.trim()) { setHata('Özet zorunludur.'); return }
+    if (!kullanici) return
+    setYukleniyor(true); setHata('')
+    const { error } = await supabase.from('saha_raporlari').insert({
+      proje_id: projeId,
+      rapor_tarihi: new Date().toISOString().split('T')[0],
+      hazirlayan_id: kullanici.id,
+      rapor_tipi: rapTipi,
+      ozet: ozet.trim(),
+      tespit_edilen_hatalar: tespitler.trim() || null,
+      yapilan_islemler: yapilanlar.trim() || null,
+      sonraki_adim: sonrakiAdim.trim() || null,
+      gonderildi_mi: false,
+      deneme_sayisi: 0,
+    })
+    setYukleniyor(false)
+    if (error) { setHata(error.message); return }
+    queryClient.invalidateQueries({ queryKey: ['proje', projeId] })
+    setModalAcik(false)
+  }
+
   return (
     <div>
       {yazabilir && (
         <div className="mb-4">
-          <Button variant="primary" onClick={() => navigate(`/projeler/${projeId}/rapor/yeni`)}>
-            + Yeni saha raporu oluştur
+          <Button variant="primary" leftIcon={<Pencil size={14} />} onClick={modalAc}>
+            Yeni saha raporu oluştur
           </Button>
         </div>
       )}
+
       {raporlar.length === 0 ? (
-        <EmptyState baslik="Henüz saha raporu oluşturulmamış" />
+        <EmptyState baslik="Henüz saha raporu oluşturulmamış"
+          aciklama="Saha ziyareti sonrası rapor oluşturun." />
       ) : (
         <div className="space-y-3">
           {raporlar.map((rapor) => (
             <Card key={rapor.id}>
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-[#0F1F33]">{rapor.rapor_tipi}</span>
                     <Badge variant={rapor.gonderildi_mi ? 'success' : 'neutral'}>
-                      {rapor.gonderildi_mi ? '✓ Gönderildi' : 'Taslak'}
+                      {rapor.gonderildi_mi ? 'Gönderildi' : 'Taslak'}
                     </Badge>
                   </div>
-                  <p className="text-xs text-[#6B7785] mt-0.5">
+                  <p className="text-xs text-[#6B7785] mt-0.5 font-mono" style={{ fontFamily: 'IBM Plex Mono' }}>
                     {formatTarih(rapor.rapor_tarihi)} · {rapor.hazirlayan?.ad_soyad}
                   </p>
-                  <p className="text-sm text-[#0F1F33] mt-1 line-clamp-2">{rapor.ozet}</p>
+                  <p className="text-sm text-[#0F1F33] mt-2 leading-relaxed">{rapor.ozet}</p>
+                  {rapor.tespit_edilen_hatalar && (
+                    <div className="mt-2 pt-2 border-t border-[#D6DCE3]">
+                      <p className="text-xs text-[#6B7785] font-medium">Tespitler</p>
+                      <p className="text-sm text-[#0F1F33] mt-0.5">{rapor.tespit_edilen_hatalar}</p>
+                    </div>
+                  )}
+                  {rapor.yapilan_islemler && (
+                    <div className="mt-2">
+                      <p className="text-xs text-[#6B7785] font-medium">Yapılan işlemler</p>
+                      <p className="text-sm text-[#0F1F33] mt-0.5">{rapor.yapilan_islemler}</p>
+                    </div>
+                  )}
+                  {rapor.sonraki_adim && (
+                    <div className="mt-2">
+                      <p className="text-xs text-[#6B7785] font-medium">Sonraki adım</p>
+                      <p className="text-sm text-[#1B4B73] mt-0.5">{rapor.sonraki_adim}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Rapor oluşturma modalı */}
+      <Modal acik={modalAcik} kapat={() => setModalAcik(false)} baslik="Yeni saha raporu" genislik="lg">
+        <div className="space-y-4">
+          <FormField label="Rapor tipi" required>
+            {(id) => (
+              <Select id={id} value={rapTipi} onChange={e => setRapTipi(e.target.value)}>
+                {RAPOR_TIPLERI.map(t => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            )}
+          </FormField>
+
+          <FormField label="Özet" required error={hata && !ozet ? hata : undefined}>
+            {(id) => (
+              <Textarea id={id} value={ozet} onChange={e => setOzet(e.target.value)}
+                placeholder="Ziyaretin genel özeti, yapılan kontrollerin sonucu…"
+                rows={3} error={!!hata && !ozet} />
+            )}
+          </FormField>
+
+          <FormField label="Tespit edilen hatalar / sorunlar">
+            {(id) => (
+              <Textarea id={id} value={tespitler} onChange={e => setTespitler(e.target.value)}
+                placeholder="Gözlemlenen eksiklikler, hatalı uygulamalar…"
+                rows={2} />
+            )}
+          </FormField>
+
+          <FormField label="Yapılan işlemler">
+            {(id) => (
+              <Textarea id={id} value={yapilanlar} onChange={e => setYapilanlar(e.target.value)}
+                placeholder="Bu ziyarette tamamlanan işler, verilen kararlar…"
+                rows={2} />
+            )}
+          </FormField>
+
+          <FormField label="Sonraki adım">
+            {(id) => (
+              <Textarea id={id} value={sonrakiAdim} onChange={e => setSonrakiAdim(e.target.value)}
+                placeholder="Planlanan bir sonraki işlem veya ziyaret…"
+                rows={1} />
+            )}
+          </FormField>
+
+          {hata && (
+            <p className="text-sm text-[#B3261E] bg-red-50 p-2 rounded" role="alert">{hata}</p>
+          )}
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setModalAcik(false)} className="flex-1">İptal</Button>
+            <Button variant="primary" onClick={kaydet} loading={yukleniyor} className="flex-1">
+              Raporu kaydet
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
