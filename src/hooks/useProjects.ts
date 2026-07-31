@@ -45,6 +45,7 @@ export function useProjects(filters?: {
           bayi:bayiler(id, ad)
         `, { count: 'exact' })
         .eq('silindi_mi', false)
+        .neq('durum', 'İptal')   // Silinen/arşivlenen projeler hiçbir sorguda görünmez
         .order('olusturma_tarihi', { ascending: false })
 
       if (filters?.durum && filters.durum !== 'tumu') {
