@@ -457,6 +457,62 @@ export function useBildirimler() {
   })
 }
 
+// ─── Materialized view (panel ve liste için hızlı özet) ───────
+export function useMvProjeOzet(filters?: {
+  durum?: string
+  il?: string
+  satis_temsilcisi_id?: string
+}) {
+  return useQuery({
+    queryKey: ['mv-proje-ozet', filters],
+    queryFn: async () => {
+      let q = supabase.from('mv_proje_ozet').select('*').order('son_hareket_tarihi', { ascending: false })
+      if (filters?.durum) q = q.eq('durum', filters.durum)
+      if (filters?.il) q = q.eq('il', filters.il)
+      if (filters?.satis_temsilcisi_id) q = q.eq('satis_temsilcisi_id', filters.satis_temsilcisi_id)
+      const { data, error } = await q
+      if (error) throw error
+      return data ?? []
+    },
+  })
+}
+
+// ─── Aylık blok grafiği verisi ────────────────────────────────
+export function useAylikBlokVerisi() {
+  return useQuery({
+    queryKey: ['aylik-blok'],
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('blok_asamalari')
+        .select('kontrol_tarihi')
+        .eq('asama_tipi', 'Devreye Alma')
+        .eq('durum', 'Tamamlandı')
+        .eq('sonuc', 'Uygun')
+        .gte('kontrol_tarihi', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString())
+        .order('kontrol_tarihi', { ascending: true })
+      if (error) throw error
+
+      // Son 12 ayı oluştur
+      const aylar: { ay: string; sayi: number; kumulatif: number }[] = []
+      const simdi = new Date()
+      let kumulatif = 0
+      for (let i = 11; i >= 0; i--) {
+        const tarih = new Date(simdi.getFullYear(), simdi.getMonth() - i, 1)
+        const ayAdi = tarih.toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' })
+        const sayi = (data ?? []).filter(d => {
+          if (!d.kontrol_tarihi) return false
+          const t = new Date(d.kontrol_tarihi)
+          return t.getFullYear() === tarih.getFullYear() && t.getMonth() === tarih.getMonth()
+        }).length
+        kumulatif += sayi
+        aylar.push({ ay: ayAdi, sayi, kumulatif })
+      }
+      return aylar
+    },
+  })
+}
+
 // ─── V1 uyumluluk aliasları ───────────────────────────────────
 export const useUpdateAshama = useUpdateAsama
 export const useArchiveProject = () => useUpdateProject()
