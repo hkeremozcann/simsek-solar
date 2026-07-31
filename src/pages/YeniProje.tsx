@@ -176,8 +176,13 @@ export default function YeniProje() {
       })
 
       navigate(`/projeler/${result.id}`)
-    } catch (err) {
-      setHatalar({ genel: err instanceof Error ? err.message : 'Bir hata oluştu.' })
+    } catch (err: unknown) {
+      const msg =
+        (err instanceof Error ? err.message : null) ||
+        (err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : null) ||
+        JSON.stringify(err)
+      console.error('Proje oluşturma hatası:', err)
+      setHatalar({ genel: msg })
     }
   }
 
